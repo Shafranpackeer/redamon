@@ -81,3 +81,14 @@
   margin: 0 var(--space-1);
 }
 
+.helpLink {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+  transition: color 0.15s ease;
+}
+
+.helpLink:hover {
+  color: var(--text-primary);
+}
+

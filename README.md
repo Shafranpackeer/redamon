@@ -206,9 +206,11 @@ No rebuild needed — just restart.
 
 ## Table of Contents
 
+- [Full Wiki Documentation](https://github.com/samugit83/redamon/wiki)
 - [Overview](#overview)
   - [Reconnaissance Pipeline](#reconnaissance-pipeline)
   - [AI Agent Orchestrator](#ai-agent-orchestrator)
+  - [Attack Path Routing](#attack-path-routing)
   - [AI Model Providers](#ai-model-providers)
   - [Local Models & OpenAI-Compatible Providers](#openai-compatible-provider)
   - [GitHub Secret Hunter](#github-secret-hunter)

@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Crosshair, FolderOpen, Shield } from 'lucide-react'
+import { Crosshair, FolderOpen, Shield, CircleHelp } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { ProjectSelector } from './ProjectSelector'
 import { UserSelector } from './UserSelector'
@@ -53,6 +53,18 @@ export function GlobalHeader() {
         <div className={styles.divider} />
 
         <ThemeToggle />
+
+        <div className={styles.divider} />
+
+        <a
+          href="https://github.com/samugit83/redamon/wiki"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={styles.helpLink}
+          title="Wiki Documentation"
+        >
+          <CircleHelp size={16} />
+        </a>
 
         <div className={styles.divider} />
 
