@@ -318,42 +318,66 @@ def run_ip_recon(target_ips: list, settings: dict) -> dict:
     expanded_ips = _filter_roe_excluded(expanded_ips, settings, label="IP")
 
     # Step 2: Reverse DNS for each IP
-    print(f"\n[PHASE 1] Reverse DNS Lookup")
-    print("-" * 40)
-
     ip_to_hostname = {}
     all_hostnames = []
     subdomains_dns = {}
 
-    for ip in expanded_ips:
-        hostname = reverse_dns_lookup(ip, max_retries=settings.get('DNS_MAX_RETRIES', 3))
-        if hostname:
-            ip_to_hostname[ip] = hostname
-            all_hostnames.append(hostname)
-            print(f"[+] {ip} -> {hostname}")
-        else:
-            # Use IP with dashes as mock subdomain name
+    dns_enabled = settings.get('DNS_ENABLED', True)
+
+    if dns_enabled:
+        print(f"\n[PHASE 1] Reverse DNS Lookup")
+        print("-" * 40)
+
+        for ip in expanded_ips:
+            hostname = reverse_dns_lookup(ip, max_retries=settings.get('DNS_MAX_RETRIES', 3))
+            if hostname:
+                ip_to_hostname[ip] = hostname
+                all_hostnames.append(hostname)
+                print(f"[+] {ip} -> {hostname}")
+            else:
+                # Use IP with dashes as mock subdomain name
+                mock_name = ip.replace('.', '-').replace(':', '-')
+                ip_to_hostname[ip] = mock_name
+                print(f"[-] {ip} -> no PTR (using {mock_name})")
+    else:
+        print(f"\n[PHASE 1] Reverse DNS Lookup — SKIPPED (disabled)")
+        for ip in expanded_ips:
             mock_name = ip.replace('.', '-').replace(':', '-')
             ip_to_hostname[ip] = mock_name
-            print(f"[-] {ip} -> no PTR (using {mock_name})")
 
     # Step 3: Build DNS data structure for each "subdomain"
-    print(f"\n[PHASE 2] DNS Resolution for Discovered Hosts")
-    print("-" * 40)
-
     subdomain_names = []
-    for ip, hostname in ip_to_hostname.items():
-        # Determine if this is a real hostname or mock
-        is_real_hostname = hostname in all_hostnames and not hostname.replace('-', '').replace('.', '').isdigit()
+    if dns_enabled:
+        print(f"\n[PHASE 2] DNS Resolution for Discovered Hosts")
+        print("-" * 40)
 
-        if is_real_hostname:
-            # Resolve DNS for real hostnames
-            print(f"[*] Resolving: {hostname}")
-            host_dns = dns_lookup(hostname)
-            subdomains_dns[hostname] = host_dns
-            subdomain_names.append(hostname)
-        else:
-            # Mock entry - create minimal DNS data with the IP
+        for ip, hostname in ip_to_hostname.items():
+            # Determine if this is a real hostname or mock
+            is_real_hostname = hostname in all_hostnames and not hostname.replace('-', '').replace('.', '').isdigit()
+
+            if is_real_hostname:
+                # Resolve DNS for real hostnames
+                print(f"[*] Resolving: {hostname}")
+                host_dns = dns_lookup(hostname)
+                subdomains_dns[hostname] = host_dns
+                subdomain_names.append(hostname)
+            else:
+                # Mock entry - create minimal DNS data with the IP
+                is_v6 = ':' in ip
+                subdomains_dns[hostname] = {
+                    "has_records": True,
+                    "ips": {
+                        "ipv4": [] if is_v6 else [ip],
+                        "ipv6": [ip] if is_v6 else [],
+                    },
+                    "records": {},
+                    "is_mock": True,
+                    "actual_ip": ip,
+                }
+                subdomain_names.append(hostname)
+    else:
+        print(f"\n[PHASE 2] DNS Resolution — SKIPPED (disabled)")
+        for ip, hostname in ip_to_hostname.items():
             is_v6 = ':' in ip
             subdomains_dns[hostname] = {
                 "has_records": True,
@@ -368,27 +392,30 @@ def run_ip_recon(target_ips: list, settings: dict) -> dict:
             subdomain_names.append(hostname)
 
     # Step 4: IP WHOIS (best-effort)
-    print(f"\n[PHASE 3] IP WHOIS Lookup")
-    print("-" * 40)
     ip_whois = {}
-    try:
-        from recon.whois_recon import whois_lookup as ip_whois_lookup
-        # WHOIS a sample of IPs (first one per /24 block to avoid flooding)
-        seen_blocks = set()
-        for ip in expanded_ips:
-            block = '.'.join(ip.split('.')[:3]) if '.' in ip else ip[:16]
-            if block in seen_blocks:
-                continue
-            seen_blocks.add(block)
-            try:
-                result = ip_whois_lookup(ip, save_output=False, settings=settings)
-                ip_whois[ip] = result.get("whois_data", {})
-                org = ip_whois[ip].get("org", "unknown")
-                print(f"[+] {ip}: org={org}")
-            except Exception as e:
-                print(f"[-] WHOIS for {ip} failed: {e}")
-    except Exception as e:
-        print(f"[!] IP WHOIS module error: {e}")
+    if settings.get('WHOIS_ENABLED', True):
+        print(f"\n[PHASE 3] IP WHOIS Lookup")
+        print("-" * 40)
+        try:
+            from recon.whois_recon import whois_lookup as ip_whois_lookup
+            # WHOIS a sample of IPs (first one per /24 block to avoid flooding)
+            seen_blocks = set()
+            for ip in expanded_ips:
+                block = '.'.join(ip.split('.')[:3]) if '.' in ip else ip[:16]
+                if block in seen_blocks:
+                    continue
+                seen_blocks.add(block)
+                try:
+                    result = ip_whois_lookup(ip, save_output=False, settings=settings)
+                    ip_whois[ip] = result.get("whois_data", {})
+                    org = ip_whois[ip].get("org", "unknown")
+                    print(f"[+] {ip}: org={org}")
+                except Exception as e:
+                    print(f"[-] WHOIS for {ip} failed: {e}")
+        except Exception as e:
+            print(f"[!] IP WHOIS module error: {e}")
+    else:
+        print(f"\n[PHASE 3] IP WHOIS Lookup — SKIPPED (disabled)")
 
     # Build the subdomain_filter (all IPs + any PTR-resolved hostnames)
     # This becomes allowed_hosts for http_probe scope checking
@@ -659,72 +686,81 @@ def run_domain_recon(target: str, anonymous: bool = False, bruteforce: bool = Fa
     }
 
     # Step 1: WHOIS lookup (always on root domain)
-    print("[PHASE 1] WHOIS Lookup")
-    print("-" * 40)
-    whois_target = root_domain
-    print(f"[*] Performing WHOIS on root domain: {whois_target}")
-    try:
-        whois_result = whois_lookup(whois_target, save_output=False, settings=_settings)
-        combined_result["whois"] = whois_result.get("whois_data", {})
-        print(f"[+] WHOIS data retrieved successfully")
-    except Exception as e:
-        print(f"[!] WHOIS lookup failed: {e}")
-        combined_result["whois"] = {"error": str(e)}
+    if _settings.get('WHOIS_ENABLED', True):
+        print("[PHASE 1] WHOIS Lookup")
+        print("-" * 40)
+        whois_target = root_domain
+        print(f"[*] Performing WHOIS on root domain: {whois_target}")
+        try:
+            whois_result = whois_lookup(whois_target, save_output=False, settings=_settings)
+            combined_result["whois"] = whois_result.get("whois_data", {})
+            print(f"[+] WHOIS data retrieved successfully")
+        except Exception as e:
+            print(f"[!] WHOIS lookup failed: {e}")
+            combined_result["whois"] = {"error": str(e)}
 
-    combined_result["metadata"]["modules_executed"].append("whois")
-    save_recon_file(combined_result, output_file)
-    print(f"[+] Saved: {output_file}")
+        combined_result["metadata"]["modules_executed"].append("whois")
+        save_recon_file(combined_result, output_file)
+        print(f"[+] Saved: {output_file}")
+    else:
+        print("[PHASE 1] WHOIS Lookup — SKIPPED (disabled)")
+        combined_result["whois"] = {"skipped": True}
 
     # Step 2: Subdomain discovery & DNS resolution
+    dns_enabled = _settings.get('DNS_ENABLED', True)
     if filtered_mode:
         # FILTERED MODE: Only scan the specified subdomains from SUBDOMAIN_LIST
-        print(f"\n[PHASE 2] Filtered Subdomain DNS Resolution")
-        print("-" * 40)
-        print(f"[*] Resolving DNS for {len(full_subdomains)} specified host(s)")
-
-        # Import dns_lookup from domain_recon
-        from recon.domain_recon import dns_lookup
-
-        # Check if root domain should be included (via "." prefix)
-        include_root = target_info.get("include_root_domain", False)
-        
-        # Resolve root domain DNS if included
-        domain_dns = {}
-        if include_root:
-            print(f"[*] Resolving root domain: {root_domain}")
-            domain_dns = dns_lookup(root_domain)
-            if domain_dns["ips"]["ipv4"] or domain_dns["ips"]["ipv6"]:
-                all_ips = domain_dns["ips"]["ipv4"] + domain_dns["ips"]["ipv6"]
-                print(f"[+] {root_domain} -> {', '.join(all_ips)}")
-            else:
-                print(f"[-] {root_domain}: No DNS records found")
-
-        # Resolve each specified subdomain (excluding root domain which is handled above)
-        subdomains_dns = {}
-        for subdomain in full_subdomains:
-            # Skip root domain (already resolved above)
-            if subdomain == root_domain:
-                continue
-                
-            print(f"[*] Resolving: {subdomain}")
-            subdomain_dns = dns_lookup(subdomain)
-            subdomains_dns[subdomain] = subdomain_dns
-
-            if subdomain_dns["ips"]["ipv4"] or subdomain_dns["ips"]["ipv6"]:
-                all_ips = subdomain_dns["ips"]["ipv4"] + subdomain_dns["ips"]["ipv6"]
-                print(f"[+] {subdomain} -> {', '.join(all_ips)}")
-            else:
-                print(f"[-] {subdomain}: No DNS records found")
-
         combined_result["subdomains"] = full_subdomains
         combined_result["subdomain_count"] = len(full_subdomains)
-        combined_result["dns"] = {
-            "domain": domain_dns,  # Include root domain DNS if "." was in SUBDOMAIN_LIST
-            "subdomains": subdomains_dns
-        }
-        combined_result["metadata"]["include_root_domain"] = include_root
 
-        combined_result["metadata"]["modules_executed"].append("dns_resolution")
+        if dns_enabled:
+            print(f"\n[PHASE 2] Filtered Subdomain DNS Resolution")
+            print("-" * 40)
+            print(f"[*] Resolving DNS for {len(full_subdomains)} specified host(s)")
+
+            # Import dns_lookup from domain_recon
+            from recon.domain_recon import dns_lookup
+
+            # Check if root domain should be included (via "." prefix)
+            include_root = target_info.get("include_root_domain", False)
+
+            # Resolve root domain DNS if included
+            domain_dns = {}
+            if include_root:
+                print(f"[*] Resolving root domain: {root_domain}")
+                domain_dns = dns_lookup(root_domain)
+                if domain_dns["ips"]["ipv4"] or domain_dns["ips"]["ipv6"]:
+                    all_ips = domain_dns["ips"]["ipv4"] + domain_dns["ips"]["ipv6"]
+                    print(f"[+] {root_domain} -> {', '.join(all_ips)}")
+                else:
+                    print(f"[-] {root_domain}: No DNS records found")
+
+            # Resolve each specified subdomain (excluding root domain which is handled above)
+            subdomains_dns = {}
+            for subdomain in full_subdomains:
+                # Skip root domain (already resolved above)
+                if subdomain == root_domain:
+                    continue
+
+                print(f"[*] Resolving: {subdomain}")
+                subdomain_dns = dns_lookup(subdomain)
+                subdomains_dns[subdomain] = subdomain_dns
+
+                if subdomain_dns["ips"]["ipv4"] or subdomain_dns["ips"]["ipv6"]:
+                    all_ips = subdomain_dns["ips"]["ipv4"] + subdomain_dns["ips"]["ipv6"]
+                    print(f"[+] {subdomain} -> {', '.join(all_ips)}")
+                else:
+                    print(f"[-] {subdomain}: No DNS records found")
+
+            combined_result["dns"] = {
+                "domain": domain_dns,  # Include root domain DNS if "." was in SUBDOMAIN_LIST
+                "subdomains": subdomains_dns
+            }
+            combined_result["metadata"]["include_root_domain"] = include_root
+            combined_result["metadata"]["modules_executed"].append("dns_resolution")
+        else:
+            print(f"\n[PHASE 2] DNS Resolution — SKIPPED (disabled)")
+            combined_result["metadata"]["include_root_domain"] = target_info.get("include_root_domain", False)
     else:
         # FULL DISCOVERY MODE: Discover all subdomains
         print(f"\n[PHASE 2] Subdomain Discovery & DNS Resolution")
@@ -733,7 +769,7 @@ def run_domain_recon(target: str, anonymous: bool = False, bruteforce: bool = Fa
             root_domain,
             anonymous=anonymous,
             bruteforce=bruteforce,
-            resolve=True,
+            resolve=dns_enabled,
             save_output=False,
             settings=_settings
         )

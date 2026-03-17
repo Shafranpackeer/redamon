@@ -106,7 +106,9 @@ model Project {
   useBruteforceForSubdomains  Boolean  @default(true) @map("use_bruteforce_for_subdomains")
 
   // ========== WHOIS/DNS ==========
+  whoisEnabled                Boolean  @default(true) @map("whois_enabled")
   whoisMaxRetries             Int      @default(6) @map("whois_max_retries")
+  dnsEnabled                  Boolean  @default(true) @map("dns_enabled")
   dnsMaxRetries               Int      @default(3) @map("dns_max_retries")
 
   // ========== GITHUB SECRET HUNT ==========
@@ -379,11 +381,11 @@ model Project {
   subfinderEnabled                      Boolean  @default(true)  @map("subfinder_enabled")
   subfinderMaxResults                   Int      @default(5000)  @map("subfinder_max_results")
   subfinderDockerImage                  String   @default("projectdiscovery/subfinder:latest") @map("subfinder_docker_image")
-  amassEnabled                          Boolean  @default(false) @map("amass_enabled")
+  amassEnabled                          Boolean  @default(true) @map("amass_enabled")
   amassMaxResults                       Int      @default(5000)  @map("amass_max_results")
   amassTimeout                          Int      @default(10)    @map("amass_timeout")
-  amassActive                           Boolean  @default(false) @map("amass_active")
-  amassBrute                            Boolean  @default(false) @map("amass_brute")
+  amassActive                           Boolean  @default(true) @map("amass_active")
+  amassBrute                            Boolean  @default(true) @map("amass_brute")
   amassDockerImage                      String   @default("caffix/amass:latest") @map("amass_docker_image")
 
   // ========== PHISHING / SOCIAL ENGINEERING SETTINGS ==========

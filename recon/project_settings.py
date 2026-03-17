@@ -40,7 +40,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     'STEALTH_MODE': False,
 
     # WHOIS/DNS
+    'WHOIS_ENABLED': True,
     'WHOIS_MAX_RETRIES': 6,
+    'DNS_ENABLED': True,
     'DNS_MAX_RETRIES': 3,
 
     # Naabu Port Scanner
@@ -315,11 +317,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     'SUBFINDER_DOCKER_IMAGE': 'projectdiscovery/subfinder:latest',
 
     # Amass (OWASP subdomain enumeration)
-    'AMASS_ENABLED': False,
+    'AMASS_ENABLED': True,
     'AMASS_MAX_RESULTS': 5000,
     'AMASS_TIMEOUT': 10,
-    'AMASS_ACTIVE': False,
-    'AMASS_BRUTE': False,
+    'AMASS_ACTIVE': True,
+    'AMASS_BRUTE': True,
     'AMASS_DOCKER_IMAGE': 'caffix/amass:latest',
 
     # Rules of Engagement (recon-relevant fields only)
@@ -401,7 +403,9 @@ def fetch_project_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
     settings['STEALTH_MODE'] = project.get('stealthMode', DEFAULT_SETTINGS['STEALTH_MODE'])
 
     # WHOIS/DNS
+    settings['WHOIS_ENABLED'] = project.get('whoisEnabled', DEFAULT_SETTINGS['WHOIS_ENABLED'])
     settings['WHOIS_MAX_RETRIES'] = project.get('whoisMaxRetries', DEFAULT_SETTINGS['WHOIS_MAX_RETRIES'])
+    settings['DNS_ENABLED'] = project.get('dnsEnabled', DEFAULT_SETTINGS['DNS_ENABLED'])
     settings['DNS_MAX_RETRIES'] = project.get('dnsMaxRetries', DEFAULT_SETTINGS['DNS_MAX_RETRIES'])
 
     # Naabu Port Scanner

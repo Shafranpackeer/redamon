@@ -240,30 +240,58 @@ export function SubdomainDiscoverySection({ data, updateField }: SubdomainDiscov
           </div>
 
           <div className={styles.subSection}>
-            <h3 className={styles.subSectionTitle}>DNS Settings <span className={styles.badgePassive}>Passive</span></h3>
-            <div className={styles.fieldRow}>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>WHOIS Max Retries</label>
-                <input
-                  type="number"
-                  className="textInput"
-                  value={data.whoisMaxRetries}
-                  onChange={(e) => updateField('whoisMaxRetries', parseInt(e.target.value) || 6)}
-                  min={1}
-                  max={20}
-                />
+            <h3 className={styles.subSectionTitle}>DNS &amp; WHOIS <span className={styles.badgePassive}>Passive</span></h3>
+
+            <div className={styles.toggleRowCompact}>
+              <div className={styles.toggleRowCompactInfo}>
+                <span className={styles.toggleLabelLg}>WHOIS Lookup</span>
+                <p className={styles.toggleDescription}>
+                  Query public WHOIS databases for domain registration info (registrar, dates, contacts)
+                </p>
               </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>DNS Max Retries</label>
-                <input
-                  type="number"
-                  className="textInput"
-                  value={data.dnsMaxRetries}
-                  onChange={(e) => updateField('dnsMaxRetries', parseInt(e.target.value) || 3)}
-                  min={1}
-                  max={10}
-                />
+              {data.whoisEnabled && (
+                <>
+                  <span className={styles.toggleRowCompactLabel}>Retries</span>
+                  <input
+                    type="number"
+                    className={`textInput ${styles.toggleRowCompactInput}`}
+                    value={data.whoisMaxRetries}
+                    onChange={(e) => updateField('whoisMaxRetries', parseInt(e.target.value) || 6)}
+                    min={1}
+                    max={20}
+                  />
+                </>
+              )}
+              <Toggle
+                checked={data.whoisEnabled}
+                onChange={(checked) => updateField('whoisEnabled', checked)}
+              />
+            </div>
+
+            <div className={styles.toggleRowCompact}>
+              <div className={styles.toggleRowCompactInfo}>
+                <span className={styles.toggleLabelLg}>DNS Resolution</span>
+                <p className={styles.toggleDescription}>
+                  Resolve DNS records (A, AAAA, MX, NS, TXT) and reverse DNS for discovered hosts
+                </p>
               </div>
+              {data.dnsEnabled && (
+                <>
+                  <span className={styles.toggleRowCompactLabel}>Retries</span>
+                  <input
+                    type="number"
+                    className={`textInput ${styles.toggleRowCompactInput}`}
+                    value={data.dnsMaxRetries}
+                    onChange={(e) => updateField('dnsMaxRetries', parseInt(e.target.value) || 3)}
+                    min={1}
+                    max={10}
+                  />
+                </>
+              )}
+              <Toggle
+                checked={data.dnsEnabled}
+                onChange={(checked) => updateField('dnsEnabled', checked)}
+              />
             </div>
           </div>
         </div>
