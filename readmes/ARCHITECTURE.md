@@ -99,7 +99,8 @@ flowchart TB
         DNS --> Ports[🔌 Port Scan<br/>Naabu]
         Ports --> HTTP[🌍 HTTP Probe<br/>Httpx]
         HTTP --> Tech[🔧 Tech Detection<br/>Wappalyzer]
-        Tech --> Vulns[⚠️ Vuln Scan<br/>Nuclei]
+        Tech --> Resources[🕸️ Resource Enum<br/>Katana, Hakrawler, GAU,<br/>Kiterunner, jsluice]
+        Resources --> Vulns[⚠️ Vuln Scan<br/>Nuclei]
     end
 
     subgraph Phase2["Phase 2: Data Storage"]
@@ -284,8 +285,10 @@ flowchart TB
 
         subgraph Module4["4️⃣ resource_enum"]
             Katana[Katana<br/>Web Crawler]
+            Hakrawler[Hakrawler<br/>DOM-aware Crawler]
             Forms[Form Parser<br/>Input Discovery]
             Endpoints[Endpoint<br/>Classification]
+            Jsluice[jsluice<br/>JS URL + Secret Extraction]
         end
 
         subgraph Module5["5️⃣ vuln_scan"]
@@ -317,10 +320,13 @@ flowchart TB
     Headers --> Certs
 
     Certs --> Katana
+    Certs --> Hakrawler
     Katana --> Forms
+    Hakrawler --> Forms
     Forms --> Endpoints
+    Endpoints --> Jsluice
 
-    Endpoints --> Nuclei
+    Jsluice --> Nuclei
     Nuclei --> MITRE
 
     MITRE --> JSON

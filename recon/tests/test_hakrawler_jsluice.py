@@ -614,7 +614,7 @@ def test_hakrawler_default_settings_exist():
     for key in expected_keys:
         assert key in DEFAULT_SETTINGS, f"Missing key: {key}"
 
-    assert DEFAULT_SETTINGS['HAKRAWLER_ENABLED'] is False
+    assert DEFAULT_SETTINGS['HAKRAWLER_ENABLED'] is True
     assert DEFAULT_SETTINGS['HAKRAWLER_DOCKER_IMAGE'] == 'jauderho/hakrawler:latest'
     assert isinstance(DEFAULT_SETTINGS['HAKRAWLER_CUSTOM_HEADERS'], list)
     print("PASS: test_hakrawler_default_settings_exist")

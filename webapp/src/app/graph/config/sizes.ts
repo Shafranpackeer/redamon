@@ -14,6 +14,7 @@ export const NODE_SIZES: Record<string, number> = {
   GithubPath: 1.2,          // File path nodes
   GithubSecret: 1,          // Leaf: leaked secret
   GithubSensitiveFile: 1,   // Leaf: sensitive file
+  Secret: 1.2,              // Slightly larger than default leaf nodes
   ExternalDomain: 1.5,      // Small — informational
   // Attack Chain nodes (30% smaller than base)
   AttackChain: 1.4,            // Chain root

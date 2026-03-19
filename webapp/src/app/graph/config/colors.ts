@@ -22,6 +22,7 @@ export const NODE_COLORS: Record<string, string> = {
   BaseURL: '#6366f1',        // Indigo - Web entry points
   Endpoint: '#8b5cf6',       // Purple - Paths/routes
   Parameter: '#a855f7',      // Light purple - Inputs (attack surface)
+  Secret: '#e11d48',          // Rose-600 - Leaked secrets (danger, attention-grabbing)
 
   // EXPLOITATION RESULTS - Confirmed compromises
   ExploitGvm: '#ea580c',     // Orange-600 - GVM confirmed exploitation (active check)

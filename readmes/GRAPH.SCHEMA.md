@@ -326,7 +326,7 @@ FOR (c:Certificate) REQUIRE (c.subject_cn, c.user_id, c.project_id) IS UNIQUE;
 ---
 
 ### 8. Endpoint
-Specific web application endpoints (paths) discovered through Katana crawling or vulnerability scanning.
+Specific web application endpoints (paths) discovered through Katana crawling, Hakrawler crawling, jsluice JavaScript analysis, or vulnerability scanning.
 These are linked to their parent BaseURL and contain discovered parameters.
 
 ```cypher
@@ -365,8 +365,8 @@ FOR (e:Endpoint) REQUIRE (e.path, e.method, e.baseurl, e.user_id, e.project_id) 
 ---
 
 ### 8. Parameter
-URL parameters that represent potential attack vectors. These are discovered through Katana crawling
-and marked as injectable when vulnerabilities are found through DAST scanning.
+URL parameters that represent potential attack vectors. These are discovered through Katana crawling,
+Hakrawler crawling, jsluice JavaScript analysis, and marked as injectable when vulnerabilities are found through DAST scanning.
 
 ```cypher
 (:Parameter {
@@ -788,7 +788,7 @@ to or what domains share certificates/hosting with the target.
     project_id: "...",
 
     // Discovery context
-    sources: ["http_probe_redirect", "urlscan"],  // How discovered (array)
+    sources: ["http_probe_redirect", "urlscan", "hakrawler", "jsluice"],  // How discovered (array)
     first_seen_at: datetime(),
 
     // Redirect context (from http_probe)
@@ -810,7 +810,7 @@ to or what domains share certificates/hosting with the target.
 | Property | Type | Description |
 |----------|------|-------------|
 | `domain` | String | Foreign domain name (UNIQUE per tenant) |
-| `sources` | String[] | Discovery sources: http_probe_redirect, urlscan, gau, katana, cert_discovery |
+| `sources` | String[] | Discovery sources: http_probe_redirect, urlscan, gau, katana, hakrawler, jsluice, cert_discovery |
 | `first_seen_at` | DateTime | When first encountered |
 | `redirect_from_urls` | String[] | In-scope URLs that redirected to this domain |
 | `redirect_to_urls` | String[] | The actual foreign URLs encountered |
@@ -837,6 +837,44 @@ FOR (ed:ExternalDomain) ON (ed.user_id, ed.project_id);
 ```
 
 **Visual:** Dashed circle, warm stone gray (#8b8178).
+
+---
+
+### Secret
+
+Secrets discovered in live web resources (JavaScript files, configuration files, etc.) during reconnaissance. This is a **generic, source-agnostic** node: jsluice populates it now, but any future secret discovery tool can create the same node type.
+
+**Created by:** `resource_enum` phase (jsluice secrets extraction)
+
+**Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | string | Unique identifier: `secret-{user_id}-{project_id}-{dedup_hash}` |
+| `user_id` | string | Tenant isolation |
+| `project_id` | string | Tenant isolation |
+| `secret_type` | string | Type of secret: `AWSAccessKey`, `APIKey`, `GCPCredential`, `GitHubToken`, etc. (from jsluice `kind`) |
+| `severity` | string | `high`, `medium`, `low`, `info` |
+| `source` | string | Discovery tool: `jsluice` (extensible to future tools) |
+| `source_url` | string | URL of the file containing the secret (e.g., `https://example.com/js/app.js`) |
+| `base_url` | string | Parent BaseURL |
+| `sample` | string | Redacted sample — first 6 characters + `...` |
+| `discovered_at` | string | Scan timestamp |
+| `updated_at` | datetime | Last update time |
+
+**Deduplication:** `secret_type + source_url + hash(data) + user_id + project_id`. Every unique secret value gets its own node. Re-scans update existing nodes via MERGE.
+
+**Constraint:**
+```cypher
+CREATE CONSTRAINT secret_unique IF NOT EXISTS FOR (s:Secret) REQUIRE (s.id) IS UNIQUE
+```
+
+**Relationship:**
+```cypher
+(BaseURL)-[:HAS_SECRET]->(Secret)
+```
+
+**Visual:** Circle, rose-600 (#e11d48) — danger/attention-grabbing.
 
 ---
 
@@ -906,6 +944,9 @@ FOR (ed:ExternalDomain) ON (ed.user_id, ed.project_id);
 
 // BaseURL has HTTP headers
 (BaseURL)-[:HAS_HEADER]->(Header)
+
+// BaseURL has discovered secrets (from jsluice or future tools)
+(BaseURL)-[:HAS_SECRET]->(Secret)
 
 // Security check vulnerabilities (missing headers, etc.) connect to BaseURL
 (BaseURL)-[:HAS_VULNERABILITY]->(Vulnerability)
@@ -1269,6 +1310,7 @@ RETURN s.name AS host, svc.name AS service, u.url AS url,
 | GithubPath | id, repository, path | ✅ Unique (global), ✅ Tenant index |
 | GithubSecret | id, repository, path, secret_type, sample | ✅ Unique (global), ✅ Tenant index |
 | GithubSensitiveFile | id, repository, path, secret_type | ✅ Unique (global), ✅ Tenant index |
+| Secret | id, secret_type, severity, source, source_url, base_url, sample | ✅ Unique (global), ✅ Tenant index |
 
 ---
 
@@ -1319,6 +1361,9 @@ FOR (c:Certificate) REQUIRE (c.subject_cn, c.user_id, c.project_id) IS UNIQUE;
 
 CREATE CONSTRAINT traceroute_unique IF NOT EXISTS
 FOR (tr:Traceroute) REQUIRE (tr.target_ip, tr.user_id, tr.project_id) IS UNIQUE;
+
+CREATE CONSTRAINT secret_unique IF NOT EXISTS
+FOR (s:Secret) REQUIRE (s.id) IS UNIQUE;
 
 // =============================================================================
 // CONSTRAINTS — Global (shared reference nodes)
@@ -1399,6 +1444,9 @@ FOR (h:Header) ON (h.user_id, h.project_id);
 CREATE INDEX idx_traceroute_tenant IF NOT EXISTS
 FOR (tr:Traceroute) ON (tr.user_id, tr.project_id);
 
+CREATE INDEX idx_secret_tenant IF NOT EXISTS
+FOR (s:Secret) ON (s.user_id, s.project_id);
+
 // =============================================================================
 // ADDITIONAL INDEXES (attribute-based lookups within tenant data)
 // =============================================================================
@@ -1458,6 +1506,16 @@ FOR (c:CVE) ON (c.cvss);
 // Parameter queries (attack surface)
 CREATE INDEX param_injectable IF NOT EXISTS
 FOR (p:Parameter) ON (p.is_injectable);
+
+// Secret queries
+CREATE INDEX idx_secret_type IF NOT EXISTS
+FOR (s:Secret) ON (s.secret_type);
+
+CREATE INDEX idx_secret_severity IF NOT EXISTS
+FOR (s:Secret) ON (s.severity);
+
+CREATE INDEX idx_secret_source IF NOT EXISTS
+FOR (s:Secret) ON (s.source);
 
 ```
 

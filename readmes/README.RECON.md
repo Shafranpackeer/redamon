@@ -249,11 +249,15 @@ sequenceDiagram
     deactivate Httpx
     Recon->>GraphBG: Background: http probe graph update
 
-    Note over Recon,KR: GROUP 5 — Resource Enum (internally parallel)
-    par Katana ∥ GAU ∥ Kiterunner
+    Note over Recon,KR: GROUP 5 — Resource Enum (parallel + sequential)
+    par Katana ∥ Hakrawler ∥ GAU ∥ Kiterunner
         Recon->>Docker: docker run katana
         Docker->>Katana: Crawl live URLs
         Katana-->>Recon: endpoints
+    and
+        Recon->>Docker: docker run hakrawler
+        Docker->>Hakrawler: DOM-aware crawl
+        Hakrawler-->>Recon: links & forms
     and
         Recon->>Docker: docker run gau
         Docker->>GAU: Fetch archived URLs
@@ -263,6 +267,7 @@ sequenceDiagram
         Docker->>KR: API bruteforce
         KR-->>Recon: hidden APIs
     end
+    Recon->>Recon: jsluice — extract URLs & secrets from JS files
     Recon->>Recon: Merge & classify endpoints
     Recon->>GraphBG: Background: resource enum graph update
 
@@ -320,8 +325,8 @@ flowchart LR
         HP[HTTP Probe<br/>Httpx + Wappalyzer]
     end
 
-    subgraph G5["GROUP 5 — internally parallel"]
-        RE[Resource Enum<br/>Katana ∥ GAU ∥ Kiterunner]
+    subgraph G5["GROUP 5 — parallel + sequential"]
+        RE[Resource Enum<br/>Katana ∥ Hakrawler ∥ GAU ∥ Kiterunner<br/>then jsluice]
     end
 
     subgraph G6["GROUP 6 — sequential"]
@@ -754,6 +759,7 @@ flowchart TB
     subgraph Parallel["Parallel Execution"]
         subgraph Active["Active Discovery"]
             Katana[🕸️ Katana<br/>Web Crawler<br/>Current endpoints]
+            Hakrawler[🔗 Hakrawler<br/>DOM-aware Crawler<br/>Links & Forms]
         end
 
         subgraph Passive["Passive Discovery"]
@@ -763,6 +769,10 @@ flowchart TB
         subgraph Bruteforce["API Discovery"]
             KR[🔑 Kiterunner<br/>Swagger Specs<br/>Hidden APIs]
         end
+    end
+
+    subgraph JSAnalysis["Sequential JS Analysis"]
+        jsluice[🔍 jsluice<br/>JS URL & Secret Extraction]
     end
 
     subgraph Merge["Merge & Classify"]
@@ -775,15 +785,21 @@ flowchart TB
         Endpoints[All Endpoints]
         Forms[Forms + Inputs]
         APIs[API Routes]
+        Secrets[Secrets & API Keys]
     end
 
     URLs --> Katana
+    URLs --> Hakrawler
     URLs --> GAU
     URLs --> KR
 
+    Katana --> jsluice
+    Hakrawler --> jsluice
     Katana --> Dedup
+    Hakrawler --> Dedup
     GAU --> Dedup
     KR --> Dedup
+    jsluice --> Dedup
 
     Dedup --> Classify
     Classify --> Parse
@@ -791,13 +807,16 @@ flowchart TB
     Parse --> Endpoints
     Parse --> Forms
     Parse --> APIs
+    Parse --> Secrets
 ```
 
 | Tool | Method | What It Finds |
 |------|--------|---------------|
 | **Katana** | Active crawling | Current live endpoints |
+| **Hakrawler** | Active crawling | Links, forms, DOM-discovered URLs |
 | **GAU** | Passive archives | Historical/deleted pages |
 | **Kiterunner** | API bruteforce | Hidden API routes |
+| **jsluice** | Passive JS analysis | URLs, endpoints, and secrets from JS files |
 
 📖 **Detailed documentation:** [readmes/README.RESOURCE_ENUM.md](README.RESOURCE_ENUM.md)
 
@@ -934,8 +953,10 @@ flowchart TB
     subgraph Layer3["Layer 7: Application"]
         Httpx[Httpx<br/>HTTP probe]
         Katana[Katana<br/>Crawl]
+        Hakrawler[Hakrawler<br/>DOM crawl]
         GAU[GAU<br/>Archives]
         KR[Kiterunner<br/>API brute]
+        jsluice[jsluice<br/>JS analysis]
         Nuclei[Nuclei<br/>Vuln scan]
     end
 
@@ -956,9 +977,14 @@ flowchart TB
     URLScan --> Naabu
     Naabu --> Httpx
     Httpx --> Katana
+    Httpx --> Hakrawler
     Httpx --> GAU
     Httpx --> KR
+    Katana --> jsluice
+    Hakrawler --> jsluice
+    jsluice --> Nuclei
     Katana --> Nuclei
+    Hakrawler --> Nuclei
     GAU --> Nuclei
     KR --> Nuclei
     Nuclei --> MITRE
@@ -967,20 +993,21 @@ flowchart TB
 
 ### Feature Comparison
 
-| Feature | WHOIS | DNS | Shodan | URLScan | Naabu | httpx | Katana | GAU | Kiterunner | Nuclei | GVM |
-|---------|-------|-----|--------|---------|-------|-------|--------|-----|------------|--------|-----|
-| **Domain Info** | ✅ | ⚠️ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **IP Resolution** | ❌ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Subdomain Discovery** | ❌ | ❌ | ⚠️ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Port Scanning** | ❌ | ❌ | ⚠️ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Live URL Check** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Tech Detection** | ❌ | ❌ | ⚠️ | ⚠️ | ❌ | ✅ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ |
-| **Endpoint Discovery** | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Historical URLs** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **API Discovery** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **CVE Detection** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| **External Domains** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚠️ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ |
-| **XSS/SQLi Testing** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ |
+| Feature | WHOIS | DNS | Shodan | URLScan | Naabu | httpx | Katana | Hakrawler | GAU | Kiterunner | jsluice | Nuclei | GVM |
+|---------|-------|-----|--------|---------|-------|-------|--------|-----------|-----|------------|---------|--------|-----|
+| **Domain Info** | ✅ | ⚠️ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **IP Resolution** | ❌ | ✅ | ⚠️ | ⚠️ | ⚠️ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Subdomain Discovery** | ❌ | ❌ | ⚠️ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Port Scanning** | ❌ | ❌ | ⚠️ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Live URL Check** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Tech Detection** | ❌ | ❌ | ⚠️ | ⚠️ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ⚠️ | ⚠️ |
+| **Endpoint Discovery** | ❌ | ❌ | ❌ | ⚠️ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ❌ | ❌ |
+| **Historical URLs** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **API Discovery** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **CVE Detection** | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **External Domains** | ❌ | ❌ | ❌ | ✅ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ |
+| **XSS/SQLi Testing** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ |
+| **Secret Detection** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 
 **Legend:** ✅ Primary | ⚠️ Limited | ❌ Not supported
 
@@ -997,7 +1024,9 @@ flowchart TB
 | Naabu | 5-10 seconds | 1000 ports |
 | httpx | 10-30 seconds | All options |
 | Katana | 1-5 minutes | Crawl depth 3 |
+| Hakrawler | 30-120 seconds | Active crawling, depth 2 |
 | GAU | 10-30 seconds | Passive |
+| jsluice | 10-60 seconds | Passive JS analysis |
 | Nuclei | 1-30 minutes | Depends on templates |
 | GVM | 30 min - 2+ hours | Full scan |
 

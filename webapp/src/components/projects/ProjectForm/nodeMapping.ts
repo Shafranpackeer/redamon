@@ -6,7 +6,7 @@ export const SECTION_NODE_MAP: Record<string, string[]> = {
   Httpx:              ['BaseURL', 'Certificate', 'Technology', 'Header', 'Service', 'Port', 'ExternalDomain'],
   Katana:             ['Endpoint', 'Parameter', 'BaseURL', 'ExternalDomain'],
   Hakrawler:          ['Endpoint', 'Parameter', 'BaseURL', 'ExternalDomain'],
-  Jsluice:            ['Endpoint', 'Parameter', 'BaseURL'],
+  Jsluice:            ['Endpoint', 'Parameter', 'BaseURL', 'Secret'],
   Gau:                ['Endpoint', 'Parameter', 'BaseURL', 'ExternalDomain'],
   Kiterunner:         ['Endpoint', 'Parameter', 'BaseURL'],
   Nuclei:             ['Vulnerability', 'Endpoint', 'Parameter', 'CVE', 'MitreData', 'Capec'],

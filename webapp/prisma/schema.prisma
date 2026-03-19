@@ -220,13 +220,13 @@ model Project {
   katanaCustomHeaders         String[] @default([]) @map("katana_custom_headers")
 
   // ========== HAKRAWLER WEB CRAWLER ==========
-  hakrawlerEnabled            Boolean  @default(false) @map("hakrawler_enabled")
+  hakrawlerEnabled            Boolean  @default(true) @map("hakrawler_enabled")
   hakrawlerDockerImage        String   @default("jauderho/hakrawler:latest") @map("hakrawler_docker_image")
   hakrawlerDepth              Int      @default(2) @map("hakrawler_depth")
   hakrawlerThreads            Int      @default(5) @map("hakrawler_threads")
   hakrawlerTimeout            Int      @default(30) @map("hakrawler_timeout")
   hakrawlerMaxUrls            Int      @default(500) @map("hakrawler_max_urls")
-  hakrawlerIncludeSubs        Boolean  @default(false) @map("hakrawler_include_subs")
+  hakrawlerIncludeSubs        Boolean  @default(true) @map("hakrawler_include_subs")
   hakrawlerInsecure           Boolean  @default(true) @map("hakrawler_insecure")
   hakrawlerCustomHeaders      String[] @default([]) @map("hakrawler_custom_headers")
 

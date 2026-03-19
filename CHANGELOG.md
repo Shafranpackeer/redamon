@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Hakrawler Integration** — DOM-aware web crawler running as Docker container (`jauderho/hakrawler`). Runs in parallel with Katana, GAU, and Kiterunner during resource enumeration. Configurable depth, threads, subdomain inclusion, and scope filtering. Disabled automatically in stealth mode.
+- **jsluice JavaScript Analysis** — Passive JS analysis tool for extracting URLs, API endpoints, and embedded secrets (AWS keys, GitHub tokens, GCP credentials, etc.) from discovered JavaScript files. Runs sequentially after the parallel crawling phase.
+- **Secret Node in Neo4j** — Generic `Secret` node type linked to `BaseURL` via `[:HAS_SECRET]`. Source-agnostic design supports jsluice now and future secret discovery tools. Includes deduplication, severity classification, and redacted samples.
+- **Hakrawler enabled by default** — New projects have Hakrawler and Include Subdomains enabled by default.
+
+---
+
 ## [3.0.0] - 2026-03-15
 
 ### Added

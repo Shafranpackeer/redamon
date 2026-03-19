@@ -13,6 +13,7 @@ Usage:
 """
 
 import os
+import hashlib
 import re
 import json
 from pathlib import Path
@@ -315,6 +316,8 @@ class Neo4jClient:
             "CREATE CONSTRAINT githubpath_unique IF NOT EXISTS FOR (gp:GithubPath) REQUIRE gp.id IS UNIQUE",
             "CREATE CONSTRAINT githubsecret_unique IF NOT EXISTS FOR (gs:GithubSecret) REQUIRE gs.id IS UNIQUE",
             "CREATE CONSTRAINT githubsensitivefile_unique IF NOT EXISTS FOR (gsf:GithubSensitiveFile) REQUIRE gsf.id IS UNIQUE",
+            # Secret constraints
+            "CREATE CONSTRAINT secret_unique IF NOT EXISTS FOR (s:Secret) REQUIRE (s.id) IS UNIQUE",
             # External Domain constraints
             "CREATE CONSTRAINT externaldomain_unique IF NOT EXISTS FOR (ed:ExternalDomain) REQUIRE (ed.domain, ed.user_id, ed.project_id) IS UNIQUE",
             # Attack Chain Graph constraints
@@ -346,6 +349,8 @@ class Neo4jClient:
             "CREATE INDEX idx_githubpath_tenant IF NOT EXISTS FOR (gp:GithubPath) ON (gp.user_id, gp.project_id)",
             "CREATE INDEX idx_githubsecret_tenant IF NOT EXISTS FOR (gs:GithubSecret) ON (gs.user_id, gs.project_id)",
             "CREATE INDEX idx_githubsensitivefile_tenant IF NOT EXISTS FOR (gsf:GithubSensitiveFile) ON (gsf.user_id, gsf.project_id)",
+            # Secret tenant indexes
+            "CREATE INDEX idx_secret_tenant IF NOT EXISTS FOR (s:Secret) ON (s.user_id, s.project_id)",
             # External Domain tenant indexes
             "CREATE INDEX idx_externaldomain_tenant IF NOT EXISTS FOR (ed:ExternalDomain) ON (ed.user_id, ed.project_id)",
             # Attack Chain Graph tenant indexes
@@ -385,6 +390,10 @@ class Neo4jClient:
             "CREATE INDEX idx_githubrepo_name IF NOT EXISTS FOR (gr:GithubRepository) ON (gr.name)",
             "CREATE INDEX idx_githubpath_path IF NOT EXISTS FOR (gp:GithubPath) ON (gp.path)",
             "CREATE INDEX idx_githubsecret_secret_type IF NOT EXISTS FOR (gs:GithubSecret) ON (gs.secret_type)",
+            # Secret functional indexes
+            "CREATE INDEX idx_secret_type IF NOT EXISTS FOR (s:Secret) ON (s.secret_type)",
+            "CREATE INDEX idx_secret_severity IF NOT EXISTS FOR (s:Secret) ON (s.severity)",
+            "CREATE INDEX idx_secret_source IF NOT EXISTS FOR (s:Secret) ON (s.source)",
             # Attack Chain Graph functional indexes
             "CREATE INDEX idx_chainstep_chain IF NOT EXISTS FOR (s:ChainStep) ON (s.chain_id)",
             "CREATE INDEX idx_chainfinding_type IF NOT EXISTS FOR (f:ChainFinding) ON (f.finding_type)",
@@ -2809,6 +2818,7 @@ class Neo4jClient:
             "endpoints_created": 0,
             "parameters_created": 0,
             "forms_created": 0,
+            "secrets_created": 0,
             "relationships_created": 0,
             "errors": []
         }
@@ -3080,6 +3090,72 @@ class Neo4jClient:
 
                 except Exception as e:
                     stats["errors"].append(f"Form endpoint update failed: {e}")
+
+            # ── Secret nodes from jsluice ──────────────────────────────
+            jsluice_secrets = resource_enum_data.get("jsluice_secrets", [])
+            created_secrets = set()
+
+            for secret in jsluice_secrets:
+                try:
+                    base_url = secret.get("base_url", "")
+                    if not base_url or not is_in_scope(base_url):
+                        continue
+
+                    secret_type = secret.get("kind", "unknown")
+                    severity = secret.get("severity", "info")
+                    source_url = secret.get("source_url", "")
+
+                    # Extract the matched data for dedup and sample
+                    data_field = secret.get("data", {})
+                    if isinstance(data_field, dict):
+                        data_str = json.dumps(data_field, sort_keys=True)
+                    else:
+                        data_str = str(data_field)
+
+                    # Dedup hash: type + source_url + data + tenant
+                    dedup_input = f"{secret_type}|{source_url}|{data_str}|{user_id}|{project_id}"
+                    dedup_hash = hashlib.sha256(dedup_input.encode()).hexdigest()[:16]
+                    node_id = f"secret-{user_id}-{project_id}-{dedup_hash}"
+
+                    if node_id in created_secrets:
+                        continue
+
+                    # Redacted sample: first 6 chars + ...
+                    matched = data_field.get("match", "") if isinstance(data_field, dict) else str(data_field)
+                    sample = (matched[:6] + "...") if len(matched) > 6 else matched
+
+                    scan_ts = resource_enum_data.get("scan_metadata", {}).get("scan_timestamp", "")
+
+                    session.run(
+                        """
+                        MERGE (s:Secret {id: $id})
+                        SET s.user_id = $user_id,
+                            s.project_id = $project_id,
+                            s.secret_type = $secret_type,
+                            s.severity = $severity,
+                            s.source = 'jsluice',
+                            s.source_url = $source_url,
+                            s.base_url = $base_url,
+                            s.sample = $sample,
+                            s.discovered_at = $discovered_at,
+                            s.updated_at = datetime()
+                        WITH s
+                        MATCH (bu:BaseURL {url: $base_url, user_id: $user_id, project_id: $project_id})
+                        MERGE (bu)-[:HAS_SECRET]->(s)
+                        """,
+                        id=node_id, user_id=user_id, project_id=project_id,
+                        secret_type=secret_type, severity=severity,
+                        source_url=source_url, base_url=base_url,
+                        sample=sample, discovered_at=scan_ts
+                    )
+                    created_secrets.add(node_id)
+                    stats["secrets_created"] += 1
+
+                except Exception as e:
+                    stats["errors"].append(f"Secret node creation failed: {e}")
+
+            if stats["secrets_created"] > 0:
+                print(f"[+][graph-db] Created {stats['secrets_created']} Secret nodes")
 
             # Update Domain node with resource_enum metadata
             metadata = recon_data.get("metadata", {})

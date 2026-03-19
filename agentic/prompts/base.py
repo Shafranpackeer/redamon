@@ -965,6 +965,14 @@ Each node has `user_id` and `project_id` properties for tenant isolation (handle
 - record_type (string): "A", "AAAA", "CNAME", "MX", "TXT", "NS"
 - value (string): record value
 
+**Secret** - Secrets discovered in live web resources (JS files, configs)
+- secret_type (string): type of secret (AWSAccessKey, APIKey, GCPCredential, GitHubToken, etc.)
+- severity (string): high, medium, low, info
+- source (string): discovery tool (jsluice, etc.)
+- source_url (string): URL of file containing the secret
+- base_url (string): parent BaseURL
+- sample (string): redacted sample of matched data
+
 **Traceroute** - Network route from scanner to target (from GVM)
 - target_ip (string): target IP address
 - scanner_ip (string): scanner IP address
@@ -1115,7 +1123,7 @@ GVM-specific properties (source="gvm"):
 
 **ExternalDomain** - Foreign domains encountered during recon (out-of-scope, informational only)
 - domain (string): foreign domain name
-- sources (string[]): discovery sources (http_probe_redirect, urlscan, gau, katana, cert_discovery)
+- sources (string[]): discovery sources (http_probe_redirect, urlscan, gau, katana, hakrawler, jsluice, cert_discovery)
 - redirect_from_urls (string[]): in-scope URLs that redirected to this domain
 - redirect_to_urls (string[]): foreign URLs encountered
 - status_codes_seen (string[]), titles_seen (string[]), servers_seen (string[])
@@ -1149,6 +1157,7 @@ GVM-specific properties (source="gvm"):
 ### Security Relationships
 - `(b:BaseURL)-[:HAS_HEADER]->(h:Header)` - BaseURL has Header
 - `(b:BaseURL)-[:HAS_CERTIFICATE]->(cert:Certificate)` - BaseURL has Certificate
+- `(b:BaseURL)-[:HAS_SECRET]->(s:Secret)` - BaseURL has discovered Secret
 - `(s:Subdomain)-[:HAS_DNS_RECORD]->(dns:DNSRecord)` - Subdomain has DNSRecord
 
 ### Vulnerability Relationships (CRITICAL DISTINCTION!)
@@ -1297,6 +1306,19 @@ RETURN s.name, i.address, p.number, p.protocol
 // Traceroute to target IP
 MATCH (i:IP)-[:HAS_TRACEROUTE]->(tr:Traceroute)
 RETURN i.address, tr.scanner_ip, tr.distance, tr.hops
+```
+
+### Secrets Discovered in Web Resources
+```cypher
+// High-severity secrets found in JS files
+MATCH (b:BaseURL)-[:HAS_SECRET]->(s:Secret)
+WHERE s.severity IN ["high", "critical"]
+RETURN b.url, s.secret_type, s.source_url, s.sample
+
+// All secrets grouped by BaseURL
+MATCH (b:BaseURL)-[:HAS_SECRET]->(s:Secret)
+RETURN b.url, count(s) AS secret_count, collect(s.secret_type) AS types
+ORDER BY secret_count DESC
 ```
 
 ### CISA KEV (Known Weaponized Vulnerabilities)

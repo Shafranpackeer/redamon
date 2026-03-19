@@ -16,21 +16,23 @@
 4. [Configuration Parameters](#configuration-parameters)
 5. [GAU Configuration](#gau-configuration)
 6. [Kiterunner Configuration](#kiterunner-configuration)
-7. [Architecture & Flow](#architecture--flow)
-8. [Output Data Structure](#output-data-structure)
-9. [Endpoint Classification](#endpoint-classification)
-10. [Parameter Classification](#parameter-classification)
-11. [Form Parsing](#form-parsing)
-12. [Usage Examples](#usage-examples)
-13. [Troubleshooting](#troubleshooting)
+7. [Hakrawler Configuration](#hakrawler-configuration)
+8. [jsluice Configuration](#jsluice-configuration)
+9. [Architecture & Flow](#architecture--flow)
+10. [Output Data Structure](#output-data-structure)
+11. [Endpoint Classification](#endpoint-classification)
+12. [Parameter Classification](#parameter-classification)
+13. [Form Parsing](#form-parsing)
+14. [Usage Examples](#usage-examples)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-The `resource_enum.py` module provides comprehensive endpoint discovery and classification for web applications. It combines **active crawling** (Katana), **passive historical URL discovery** (GAU), and **API bruteforcing** (Kiterunner) to maximize endpoint coverage, extracts parameters, parses HTML forms, and organizes everything into a structured format ready for vulnerability scanning.
+The `resource_enum.py` module provides comprehensive endpoint discovery and classification for web applications. It combines **active crawling** (Katana + Hakrawler), **passive historical URL discovery** (GAU), **API bruteforcing** (Kiterunner), and **JavaScript analysis** (jsluice) to maximize endpoint coverage, extracts parameters, parses HTML forms, discovers embedded secrets, and organizes everything into a structured format ready for vulnerability scanning.
 
-**Pipeline Position:** GROUP 5 in the parallelized pipeline (`GROUP 4: http_probe -> GROUP 5: resource_enum -> GROUP 6: vuln_scan`). Katana, GAU, and Kiterunner run concurrently via internal `ThreadPoolExecutor`.
+**Pipeline Position:** GROUP 5 in the parallelized pipeline (`GROUP 4: http_probe -> GROUP 5: resource_enum -> GROUP 6: vuln_scan`). Katana, Hakrawler, GAU, and Kiterunner run concurrently via internal `ThreadPoolExecutor`. jsluice runs sequentially after crawling to analyze discovered JavaScript files.
 
 ### Why Resource Enumeration?
 
@@ -80,7 +82,9 @@ The `resource_enum.py` module provides comprehensive endpoint discovery and clas
 | **Katana Crawling** | Deep endpoint discovery using ProjectDiscovery's Katana (active) |
 | **GAU Discovery** | Historical URL discovery from Wayback, CommonCrawl, OTX, URLScan (passive) |
 | **Kiterunner API Bruteforce** | Hidden API discovery using 40k+ Swagger/OpenAPI specifications |
-| **Parallel Execution** | Katana, GAU, and Kiterunner run simultaneously for faster results |
+| **Hakrawler Crawling** | DOM-aware web crawling via Docker (active) |
+| **jsluice JS Analysis** | Passive JavaScript analysis to extract URLs, endpoints, and secrets |
+| **Parallel Execution** | Katana, Hakrawler, GAU, and Kiterunner run simultaneously for faster results |
 | **URL Verification** | Verifies GAU URLs are live before adding to results |
 | **Method Detection** | OPTIONS probe detects allowed HTTP methods (GET, POST, PUT, DELETE) |
 | **Dead Endpoint Filtering** | Filters out endpoints that don't respond (404, 500, timeout) |
@@ -90,7 +94,7 @@ The `resource_enum.py` module provides comprehensive endpoint discovery and clas
 | **Type Inference** | Infers parameter data types (integer, email, URL, etc.) |
 | **Endpoint Classification** | Categorizes endpoints (auth, api, admin, file_access, etc.) |
 | **Parameter Classification** | Identifies sensitive params (id, file, auth, redirect, command) |
-| **Source Tracking** | Each endpoint tracked with `sources` array: `["katana", "gau", "kiterunner"]` |
+| **Source Tracking** | Each endpoint tracked with `sources` array: `["katana", "hakrawler", "gau", "kiterunner", "jsluice"]` |
 | **Docker Execution** | Runs via Docker for consistency |
 | **Tor Support** | Anonymous crawling via SOCKS proxy |
 | **Incremental Output** | Saves results as crawling progresses |
@@ -478,9 +482,108 @@ KITERUNNER_SCAN_TIMEOUT = 600
 
 ---
 
+## Hakrawler Configuration
+
+Hakrawler is a DOM-aware web crawler that runs as a Docker container (`jauderho/hakrawler`). It runs in parallel with Katana, GAU, and Kiterunner, providing an additional crawling perspective with scope-aware link following.
+
+### 1. Core Hakrawler Settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `HAKRAWLER_ENABLED` | `bool` | `True` | Enable/disable Hakrawler crawling |
+| `HAKRAWLER_DOCKER_IMAGE` | `str` | `"jauderho/hakrawler:latest"` | Docker image to use |
+| `HAKRAWLER_DEPTH` | `int` | `2` | Crawl depth (how many links deep to follow) |
+| `HAKRAWLER_THREADS` | `int` | `5` | Concurrent threads |
+| `HAKRAWLER_TIMEOUT` | `int` | `30` | Per-URL timeout in seconds |
+| `HAKRAWLER_MAX_URLS` | `int` | `500` | Maximum URLs to discover |
+| `HAKRAWLER_INCLUDE_SUBS` | `bool` | `True` | Include subdomains in crawl scope |
+| `HAKRAWLER_INSECURE` | `bool` | `True` | Skip TLS certificate verification |
+| `HAKRAWLER_CUSTOM_HEADERS` | `list` | `[]` | Custom HTTP headers |
+
+### 2. Scope Filtering
+
+Hakrawler scope filtering works at two levels:
+
+| Level | Mechanism | Description |
+|-------|-----------|-------------|
+| **Crawl scope** | `-subs` flag | If `INCLUDE_SUBS=True`, Hakrawler follows links to subdomains of the target |
+| **Output scope** | Hostname exact match | After crawling, results are filtered against `target_domains` set (from http_probe). URLs with hostnames not in scope are captured as `ExternalDomain` nodes instead of `Endpoint` nodes |
+
+### 3. What Hakrawler Finds
+
+| Category | Examples | Why It Matters |
+|----------|----------|----------------|
+| **DOM links** | `<a href="...">`, `<link>`, `<script src>` | Links that JS-rendered crawlers may miss |
+| **Form actions** | `<form action="/submit">` | POST endpoints for parameter fuzzing |
+| **Asset references** | CSS imports, image URLs, font files | Reveals directory structure |
+| **Subdomain links** | Links pointing to `api.example.com` | Discovers related subdomains |
+| **External domains** | Links to third-party services | Maps external dependencies |
+
+### 4. Stealth Mode
+
+When `STEALTH_MODE` is enabled, Hakrawler is automatically **disabled** to reduce the active crawling footprint. jsluice max files is reduced to 20.
+
+---
+
+## jsluice Configuration
+
+jsluice is a **passive** JavaScript analysis tool compiled into the recon container (no Docker image needed). It downloads JavaScript files already discovered by Katana/Hakrawler and analyzes their contents locally to extract URLs, API endpoints, and embedded secrets.
+
+### 1. Core jsluice Settings
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `JSLUICE_ENABLED` | `bool` | `True` | Enable/disable jsluice analysis |
+| `JSLUICE_MAX_FILES` | `int` | `50` | Maximum number of JS files to analyze |
+| `JSLUICE_TIMEOUT` | `int` | `120` | Overall timeout in seconds |
+| `JSLUICE_CONCURRENCY` | `int` | `5` | Files to process concurrently |
+| `JSLUICE_EXTRACT_URLS` | `bool` | `True` | Run URL extraction mode |
+| `JSLUICE_EXTRACT_SECRETS` | `bool` | `True` | Run secret detection mode |
+
+### 2. How jsluice Works
+
+jsluice is **passive** — it generates no additional web traffic beyond downloading JS files:
+
+1. **Filter**: Selects `.js` and `.mjs` URLs from all URLs discovered by Katana/Hakrawler/GAU
+2. **Download**: Fetches JS files to a temporary directory (`/tmp/redamon/jsluice_<pid>/`)
+3. **Analyze URLs**: Runs `jsluice urls` to extract embedded URLs and API endpoints
+4. **Analyze Secrets**: Runs `jsluice secrets` to detect API keys, tokens, credentials
+5. **Scope filter**: Extracted URLs are filtered against `allowed_hosts`; out-of-scope URLs become `ExternalDomain` nodes
+6. **Cleanup**: Temporary files are deleted in a `finally` block
+
+### 3. What jsluice Finds
+
+**URL Extraction:**
+
+| Category | Examples | Why It Matters |
+|----------|----------|----------------|
+| **API endpoints** | `/api/v2/users`, `/graphql` | Hidden backend routes |
+| **Internal URLs** | `/admin/config`, `/debug/vars` | Undocumented functionality |
+| **External services** | `https://api.stripe.com/v1/charges` | Third-party integrations |
+| **CDN/asset paths** | `/static/js/`, `/assets/` | Directory structure |
+
+**Secret Detection:**
+
+| Secret Type | Examples | Severity |
+|-------------|----------|----------|
+| **AWS Access Keys** | `AKIA...` | High |
+| **GitHub Tokens** | `ghp_...`, `gho_...` | High |
+| **GCP Credentials** | `AIza...` | High |
+| **API Keys** | Generic API key patterns | Medium |
+| **Private Keys** | `-----BEGIN RSA PRIVATE KEY-----` | High |
+| **JWT Tokens** | `eyJ...` | Medium |
+
+Discovered secrets are stored as **Secret** nodes in Neo4j, linked to their parent `BaseURL` via `[:HAS_SECRET]`.
+
+### 4. jsluice in the Pipeline
+
+jsluice runs **sequentially after** the parallel crawling phase (Katana + Hakrawler + GAU + Kiterunner), because it needs their discovered URLs as input. It adds minimal time since JS file analysis is CPU-bound (no network scanning).
+
+---
+
 ## Architecture & Flow
 
-> **Pipeline context:** Resource enumeration runs in **GROUP 5** of the parallelized recon pipeline, after HTTP probing (GROUP 4). The three discovery tools (Katana, GAU, Kiterunner) already run concurrently via an internal `ThreadPoolExecutor`. Graph DB updates happen in a background thread.
+> **Pipeline context:** Resource enumeration runs in **GROUP 5** of the parallelized recon pipeline, after HTTP probing (GROUP 4). The four discovery tools (Katana, Hakrawler, GAU, Kiterunner) run concurrently via an internal `ThreadPoolExecutor`. jsluice then runs sequentially on discovered JS files. Graph DB updates happen in a background thread.
 
 ### Execution Flow
 
@@ -496,23 +599,31 @@ KITERUNNER_SCAN_TIMEOUT = 600
    └── Filter by status code (< 500)
    └── Fallback to DNS data if no http_probe
 
-3. PARALLEL DISCOVERY (Katana + GAU + Kiterunner)
-   ┌──────────────────────────────────────────────────────────────┐
-   │  ThreadPoolExecutor (max_workers=3)                          │
-   │                                                              │
-   │  ┌─────────────┐  ┌─────────────┐  ┌────────────────────┐   │
-   │  │   KATANA    │  │     GAU     │  │    KITERUNNER      │   │
-   │  │   (active)  │  │  (passive)  │  │    (API brute)     │   │
-   │  │             │  │             │  │                    │   │
-   │  │ - Crawl     │  │ - Wayback   │  │ - Swagger specs    │   │
-   │  │ - Parse JS  │  │ - CommonCrl │  │ - 40k+ API routes  │   │
-   │  │ - Find URLs │  │ - OTX       │  │ - Method detection │   │
-   │  │             │  │ - URLScan   │  │                    │   │
-   │  └──────┬──────┘  └──────┬──────┘  └─────────┬──────────┘   │
-   │         │                │                   │               │
-   └─────────┴────────────────┴───────────────────┴───────────────┘
+3. PARALLEL DISCOVERY (Katana + Hakrawler + GAU + Kiterunner)
+   ┌───────────────────────────────────────────────────────────────────────────┐
+   │  ThreadPoolExecutor (max_workers=4)                                       │
+   │                                                                           │
+   │  ┌───────────┐  ┌────────────┐  ┌───────────┐  ┌────────────────────┐    │
+   │  │  KATANA   │  │ HAKRAWLER  │  │    GAU    │  │    KITERUNNER      │    │
+   │  │  (active) │  │  (active)  │  │ (passive) │  │    (API brute)     │    │
+   │  │           │  │            │  │           │  │                    │    │
+   │  │ - Crawl   │  │ - DOM-walk │  │ - Wayback │  │ - Swagger specs    │    │
+   │  │ - Parse JS│  │ - Docker   │  │ - CmnCrl  │  │ - 40k+ API routes  │    │
+   │  │ - Find URL│  │ - Scope    │  │ - OTX     │  │ - Method detection │    │
+   │  │           │  │            │  │ - URLScan │  │                    │    │
+   │  └─────┬─────┘  └─────┬──────┘  └─────┬─────┘  └─────────┬──────────┘    │
+   │        │               │               │                  │               │
+   └────────┴───────────────┴───────────────┴──────────────────┴───────────────┘
                               │
                               ▼
+3b. JSLUICE ANALYSIS (sequential, after parallel discovery)
+   └── Filter discovered URLs to .js/.mjs files
+   └── Download JS files to /tmp/redamon/jsluice_<pid>/
+   └── Run jsluice urls (extract endpoints)
+   └── Run jsluice secrets (detect API keys, tokens, credentials)
+   └── Scope-filter extracted URLs
+   └── Cleanup temp files
+
 4. GAU URL VERIFICATION (if enabled)
    └── Write GAU URLs to temp file
    └── Run httpx Docker for verification
@@ -526,8 +637,10 @@ KITERUNNER_SCAN_TIMEOUT = 600
 
 6. MERGE & DEDUPLICATE
    └── Mark Katana endpoints with sources=['katana']
+   └── Merge Hakrawler URLs, add 'hakrawler' to sources array
    └── Merge GAU URLs, add 'gau' to sources array
    └── Merge Kiterunner APIs, add 'kiterunner' to sources array
+   └── Merge jsluice URLs, add 'jsluice' to sources array
    └── Apply detected methods to endpoints
    └── Track overlap statistics for each tool
 
@@ -546,7 +659,7 @@ KITERUNNER_SCAN_TIMEOUT = 600
 
 9. OUTPUT GENERATION
    └── Build structured JSON
-   └── Include GAU + Kiterunner stats
+   └── Include GAU + Hakrawler + Kiterunner + jsluice stats
    └── Generate summary statistics
    └── Save to recon file
 ```
@@ -638,6 +751,17 @@ KITERUNNER_SCAN_TIMEOUT = 600
         "kr_overlap": 7,
         "kr_methods": {"GET": 30, "POST": 12, "PUT": 3}
       },
+
+      "hakrawler_enabled": true,
+      "hakrawler_docker_image": "jauderho/hakrawler:latest",
+      "hakrawler_depth": 2,
+      "hakrawler_threads": 5,
+      "hakrawler_urls_found": 78,
+
+      "jsluice_enabled": true,
+      "jsluice_max_files": 50,
+      "jsluice_urls_found": 42,
+      "jsluice_secrets_found": 3,
 
       "proxy_used": false,
       "target_urls_count": 5,
@@ -824,13 +948,16 @@ Each endpoint includes a `sources` array indicating where it was discovered:
 | Example | Meaning |
 |---------|---------|
 | `["katana"]` | Found only by Katana active crawling |
+| `["hakrawler"]` | Found only by Hakrawler DOM crawling |
 | `["gau"]` | Found only by GAU passive discovery |
 | `["kiterunner"]` | Found only by Kiterunner API bruteforce |
+| `["jsluice"]` | Found only by jsluice JavaScript analysis |
+| `["katana", "hakrawler"]` | Found by both active crawlers |
 | `["katana", "gau"]` | Found by both Katana and GAU |
-| `["katana", "gau", "kiterunner"]` | Found by all three tools |
+| `["katana", "hakrawler", "gau", "kiterunner", "jsluice"]` | Found by all five tools |
 
 **Why Array Format?**
-- With 3 discovery tools, a simple `"both"` string doesn't work
+- With 5 discovery tools, a simple string can't capture all combinations
 - Arrays allow precise tracking of which tools found each endpoint
 - Helps prioritize endpoints found by multiple tools (higher confidence)
 
@@ -1009,11 +1136,15 @@ Resource enumeration data is stored in Neo4j:
 |------|------------|
 | **Endpoint** | path, method, category, has_parameters, query_param_count, body_param_count |
 | **Parameter** | name, position (query/body), type, category, sample_values |
+| **Secret** | secret_type, severity, source, source_url, base_url, sample |
+| **ExternalDomain** | domain, source (katana, hakrawler, jsluice, gau), url |
 
 ### Relationships
 
 ```
 (BaseURL) -[:HAS_ENDPOINT]-> (Endpoint) -[:HAS_PARAMETER]-> (Parameter)
+(BaseURL) -[:HAS_SECRET]-> (Secret)
+(Domain) -[:HAS_EXTERNAL_DOMAIN]-> (ExternalDomain)
 ```
 
 ### Example Cypher Queries
@@ -1030,6 +1161,16 @@ RETURN e.path, p.name
 // Find all POST forms
 MATCH (e:Endpoint {method: 'POST', is_form: true})
 RETURN e.path, e.form_found_at
+
+// Find secrets discovered in JavaScript files
+MATCH (b:BaseURL)-[:HAS_SECRET]->(s:Secret)
+WHERE s.severity IN ['high', 'critical']
+RETURN b.url, s.secret_type, s.source_url, s.sample
+
+// Find endpoints discovered by Hakrawler but not Katana
+MATCH (e:Endpoint)
+WHERE 'hakrawler' IN e.sources AND NOT 'katana' IN e.sources
+RETURN e.path, e.method
 ```
 
 ---

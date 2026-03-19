@@ -226,13 +226,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     'GAU_FILTER_DEAD_ENDPOINTS': True,
 
     # Hakrawler Web Crawler
-    'HAKRAWLER_ENABLED': False,
+    'HAKRAWLER_ENABLED': True,
     'HAKRAWLER_DOCKER_IMAGE': 'jauderho/hakrawler:latest',
     'HAKRAWLER_DEPTH': 2,
     'HAKRAWLER_THREADS': 5,
     'HAKRAWLER_TIMEOUT': 30,
     'HAKRAWLER_MAX_URLS': 500,
-    'HAKRAWLER_INCLUDE_SUBS': False,
+    'HAKRAWLER_INCLUDE_SUBS': True,
     'HAKRAWLER_INSECURE': True,
     'HAKRAWLER_CUSTOM_HEADERS': [],
 

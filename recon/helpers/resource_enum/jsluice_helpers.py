@@ -72,6 +72,7 @@ def run_jsluice_analysis(
         print(f"[+][jsluice] Downloaded {len(downloaded)} JS files")
 
         files_by_base = {}
+        filepath_to_source_url = {filepath: url for url, filepath in downloaded.items()}
         for url, filepath in downloaded.items():
             parsed = urlparse(url)
             base = f"{parsed.scheme}://{parsed.netloc}"
@@ -119,6 +120,10 @@ def run_jsluice_analysis(
             for base_url, file_entries in files_by_base.items():
                 filepaths = [fp for _, fp in file_entries]
                 secrets = _run_jsluice_secrets(filepaths, concurrency, timeout)
+                for secret in secrets:
+                    secret["base_url"] = base_url
+                    filename = secret.get("filename", "")
+                    secret["source_url"] = filepath_to_source_url.get(filename, "")
                 all_secrets.extend(secrets)
 
             if all_secrets:
@@ -289,6 +294,18 @@ def _download_js_files(
                 }
             )
             response = opener.open(request, timeout=10)
+
+            # Skip non-200 responses (redirects, 404s, etc.)
+            if response.status != 200:
+                print(f"[-][jsluice] Skipping {url}: HTTP {response.status}")
+                continue
+
+            # Verify response is actually JavaScript, not an HTML error page
+            content_type = response.headers.get('Content-Type', '').lower()
+            if 'html' in content_type and 'javascript' not in content_type:
+                print(f"[-][jsluice] Skipping {url}: Content-Type is {content_type} (not JS)")
+                continue
+
             content = response.read()
 
             if len(content) > 10 * 1024 * 1024:
@@ -298,7 +315,8 @@ def _download_js_files(
             with open(filepath, 'wb') as f:
                 f.write(content)
             downloaded[url] = filepath
-        except Exception:
+        except Exception as e:
+            print(f"[!][jsluice] Failed to download {url}: {e}")
             continue
 
     return downloaded
