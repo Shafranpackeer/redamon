@@ -106,6 +106,11 @@ def setup_llm(
             timeout = custom_llm_config.get("timeout")
             if timeout:
                 kwargs["timeout"] = float(timeout)
+            ssl_verify = custom_llm_config.get("sslVerify", True)
+            if not ssl_verify:
+                import httpx
+                kwargs["http_client"] = httpx.Client(verify=False)
+                kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
             llm = ChatOpenAI(**kwargs)
 
     elif provider == "openai_compat":

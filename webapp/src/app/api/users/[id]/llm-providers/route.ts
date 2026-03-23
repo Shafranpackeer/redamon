@@ -80,6 +80,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         timeout: body.timeout ?? 120,
         temperature: body.temperature ?? 0,
         maxTokens: body.maxTokens ?? 16384,
+        sslVerify: body.sslVerify ?? true,
         awsRegion: body.awsRegion || 'us-east-1',
         awsAccessKeyId: body.awsAccessKeyId || '',
         awsSecretKey: body.awsSecretKey || '',

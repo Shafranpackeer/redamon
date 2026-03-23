@@ -324,12 +324,27 @@ def fetch_agent_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
         model_id = settings.get('OPENAI_MODEL', '')
         if model_id.startswith('custom/'):
             config_id = model_id[len('custom/'):]
-            for p in settings.get('USER_LLM_PROVIDERS', []):
+            providers = settings.get('USER_LLM_PROVIDERS', [])
+            matched = None
+            for p in providers:
                 if p.get('id') == config_id:
-                    settings['CUSTOM_LLM_CONFIG'] = p
+                    matched = p
                     break
+
+            if not matched and providers:
+                # Provider ID is stale (deleted & recreated). Fall back to the
+                # user's first compatible provider so the agent isn't stuck.
+                matched = providers[0]
+                logger.warning(
+                    f"Custom LLM config {config_id} not found; "
+                    f"falling back to provider {matched['id']} ({matched.get('name')})"
+                )
+                settings['OPENAI_MODEL'] = f"custom/{matched['id']}"
+
+            if matched:
+                settings['CUSTOM_LLM_CONFIG'] = matched
             else:
-                logger.warning(f"Custom LLM config {config_id} not found in user providers")
+                logger.warning(f"Custom LLM config {config_id} not found and no providers available")
                 settings['CUSTOM_LLM_CONFIG'] = None
     else:
         settings['USER_LLM_PROVIDERS'] = []

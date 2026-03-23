@@ -519,6 +519,7 @@ class LlmProviderTestRequest(BaseModel):
     timeout: int = 120
     temperature: float = 0
     maxTokens: int = 16384
+    sslVerify: bool = True
     awsRegion: str = "us-east-1"
     awsAccessKeyId: str = ""
     awsSecretKey: str = ""
@@ -559,6 +560,10 @@ async def test_llm_provider(body: LlmProviderTestRequest):
                 kwargs["default_headers"] = body.defaultHeaders
             if body.timeout:
                 kwargs["timeout"] = float(body.timeout)
+            if not body.sslVerify:
+                import httpx
+                kwargs["http_client"] = httpx.Client(verify=False)
+                kwargs["http_async_client"] = httpx.AsyncClient(verify=False)
             llm = ChatOpenAI(**kwargs)
         else:
             return JSONResponse(

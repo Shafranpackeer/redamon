@@ -24,6 +24,7 @@ export interface ProviderData {
   timeout: number
   temperature: number
   maxTokens: number
+  sslVerify: boolean
   awsRegion: string
   awsAccessKeyId: string
   awsSecretKey: string
@@ -39,6 +40,7 @@ const EMPTY_PROVIDER: ProviderData = {
   timeout: 120,
   temperature: 0,
   maxTokens: 16384,
+  sslVerify: true,
   awsRegion: 'us-east-1',
   awsAccessKeyId: '',
   awsSecretKey: '',
@@ -366,6 +368,19 @@ export function LlmProviderForm({ userId, provider, onSave, onCancel }: LlmProvi
                 onChange={e => updateForm('maxTokens', parseInt(e.target.value) || 16384)}
               />
             </div>
+          </div>
+
+          {/* SSL verify toggle */}
+          <div className="formGroup">
+            <label className={styles.checkboxLabel}>
+              <input
+                type="checkbox"
+                checked={!form.sslVerify}
+                onChange={e => updateForm('sslVerify', !e.target.checked)}
+              />
+              <span>Skip SSL certificate verification</span>
+            </label>
+            <span className="formHint">Enable for internal endpoints with self-signed certificates</span>
           </div>
         </>
       )}

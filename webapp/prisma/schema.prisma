@@ -41,6 +41,7 @@ model UserLlmProvider {
   timeout         Int      @default(120)
   temperature     Float    @default(0)
   maxTokens       Int      @default(16384) @map("max_tokens")
+  sslVerify       Boolean  @default(true) @map("ssl_verify")
 
   // Bedrock only
   awsRegion       String   @default("us-east-1") @map("aws_region")
