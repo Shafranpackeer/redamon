@@ -71,5 +71,8 @@ fi
 echo "[*] Starting terminal WebSocket server..."
 python3 /opt/mcp_servers/terminal_server.py &
 
+echo "[*] Starting Interactsh OOB client..."
+python3 /opt/mcp_servers/interactsh_client.py &
+
 echo "[*] Starting MCP servers..."
 exec python3 run_servers.py "$@"

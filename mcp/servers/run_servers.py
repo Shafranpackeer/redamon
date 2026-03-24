@@ -72,6 +72,11 @@ SERVERS = {
         "module": "nmap_server",
         "port": 8004,
         "description": "Network Mapper"
+    },
+    "sqli": {
+        "module": "sqli_server",
+        "port": 8005,
+        "description": "SQL Injection Scanner"
     }
 }
 

@@ -70,11 +70,13 @@ RUN ARCH=$(dpkg --print-architecture) && \
 ENV PATH="${PATH}:/usr/local/go/bin:/root/go/bin"
 ENV GOPATH="/root/go"
 
-# Install ProjectDiscovery tools (naabu, nuclei)
+# Install ProjectDiscovery tools (naabu, nuclei, interactsh)
 # Source: https://github.com/projectdiscovery/naabu (AGPL-3.0)
 # Source: https://github.com/projectdiscovery/nuclei (AGPL-3.0)
+# Source: https://github.com/projectdiscovery/interactsh (MIT)
 RUN go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
-    && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+    && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
+    && go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
 
 # Update nuclei templates
 RUN nuclei -update-templates || true
@@ -112,7 +114,8 @@ RUN CHISEL_VERSION="1.11.4" && \
     chmod +x /usr/local/bin/chisel
 
 # Expose ports for MCP servers (SSE/HTTP transport) + tunnel manager + ngrok API + terminal WS
-EXPOSE 8000 8002 8003 8004 8014 8015 8016 4040
+# 8005 = SQLi scanner, 8006 = Interactsh OOB client
+EXPOSE 8000 8002 8003 8004 8005 8006 8014 8015 8016 4040
 
 # Initialize Metasploit database (speeds up first run)
 RUN msfdb init || true
