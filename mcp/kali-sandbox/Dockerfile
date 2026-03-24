@@ -76,6 +76,10 @@ ENV GOPATH="/root/go"
 RUN go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
     && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 
+# Install Dalfox (XSS scanner)
+# Source: https://github.com/hahwul/dalfox (MIT)
+RUN go install -v github.com/hahwul/dalfox/v2@latest
+
 # Update nuclei templates
 RUN nuclei -update-templates || true
 

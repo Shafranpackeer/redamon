@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir fastapi uvicorn pydantic neo4j websockets
+
+COPY servers/xss_callback_server.py /app/xss_callback_server.py
+
+EXPOSE 8004
+
+CMD ["python3", "/app/xss_callback_server.py"]
