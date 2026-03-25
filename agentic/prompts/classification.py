@@ -44,21 +44,27 @@ _SQLI_SECTION = """### sql_injection — SQL Injection
 - Keywords: SQL injection, SQLi, sqlmap, database dump, union select, blind injection, WAF bypass, authentication bypass
 """
 
+_XSS_SECTION = """### xss — Cross-Site Scripting
+- XSS testing against web applications using Dalfox and manual techniques
+- Includes: reflected XSS, stored XSS, DOM-based XSS, blind XSS with OOB callbacks
+- Key distinction: injecting scripts into web pages that execute in victim's browser
+- Keywords: XSS, cross-site scripting, reflected XSS, stored XSS, DOM XSS, blind XSS, dalfox, script injection, alert(1)
+"""
+
 _UNCLASSIFIED_SECTION = """### <descriptive_term>-unclassified
 - ANY exploitation request that does NOT clearly fit the enabled attack skills above
 - The agent has no specialized workflow for these — it will use available tools generically
 - **Key distinction from phishing:** the attacker directly interacts with a SERVICE/APPLICATION, NOT generating a payload for a target user to execute
   - "Test for SSRF on the API" → unclassified (attacker sends crafted input to a web service)
   - "Generate a reverse shell payload" → phishing (attacker creates a file for a target user to execute)
-- **Key distinction from sql_injection:** if the request is specifically about SQL injection, use the `sql_injection` skill instead
+- **Key distinction from sql_injection/xss:** if the request is specifically about SQL injection or XSS, use those dedicated skills instead
 - You MUST create a short, descriptive snake_case term followed by "-unclassified"
 - Format: `<term>-unclassified` where term is 1-4 lowercase words joined by underscores
-- Example values: "ssrf-unclassified", "xss-unclassified", "file_upload-unclassified", "directory_traversal-unclassified"
-- Keywords: XSS, cross-site scripting, directory traversal, path traversal, SSRF, file upload, command injection, LFI, RFI, deserialization, XXE, privilege escalation
+- Example values: "ssrf-unclassified", "file_upload-unclassified", "directory_traversal-unclassified", "command_injection-unclassified"
+- Keywords: directory traversal, path traversal, SSRF, file upload, command injection, LFI, RFI, deserialization, XXE, privilege escalation
 - Example requests:
   - "Test for SSRF on the API" -> "ssrf-unclassified"
   - "Try to upload a web shell" -> "file_upload-unclassified"
-  - "Test for XSS on the login page" -> "xss-unclassified"
   - "Attempt directory traversal" -> "directory_traversal-unclassified"
   - "Try command injection on the web form" -> "command_injection-unclassified"
 """
@@ -70,6 +76,7 @@ _BUILTIN_SKILL_MAP = {
     'cve_exploit': (_CVE_EXPLOIT_SECTION, 'c', 'cve_exploit'),
     'denial_of_service': (_DOS_SECTION, 'd', 'denial_of_service'),
     'sql_injection': (_SQLI_SECTION, 'e', 'sql_injection'),
+    'xss': (_XSS_SECTION, 'f', 'xss'),
 }
 
 # Classification instructions for built-in skills (no priority — best match wins)
@@ -93,6 +100,10 @@ _CLASSIFICATION_INSTRUCTIONS = {
       - Does the request mention SQL injection, SQLi, database dumping, or union/blind injection?
       - Does it target a web application parameter with SQL-specific attack intent?
       - Does it mention sqlmap, WAF bypass for SQL, authentication bypass via SQL, or OOB/DNS exfiltration?""",
+    'xss': """   - **xss**:
+      - Does the request mention XSS, cross-site scripting, script injection, or alert(1)?
+      - Does it target a web application with intent to inject client-side scripts?
+      - Does it mention dalfox, reflected/stored/DOM XSS, blind XSS, or cookie theft via scripts?""",
 }
 
 
@@ -156,7 +167,7 @@ def build_classification_prompt(objective: str) -> str:
     parts.append("## Attack Skill Types (ONLY for exploitation phase)\n")
 
     # Built-in skills (only enabled ones)
-    for skill_id in ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service', 'sql_injection']:
+    for skill_id in ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service', 'sql_injection', 'xss']:
         if skill_id in enabled_builtins:
             section_text, _, _ = _BUILTIN_SKILL_MAP[skill_id]
             parts.append(section_text)
@@ -187,7 +198,7 @@ def build_classification_prompt(objective: str) -> str:
                  "'brute force SSH' → brute_force_credential_guess). Pick the one whose criteria fit most closely:\n")
 
     # Built-in skill classification criteria
-    builtin_skill_ids = ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service', 'sql_injection']
+    builtin_skill_ids = ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service', 'sql_injection', 'xss']
     for skill_id in builtin_skill_ids:
         if skill_id in enabled_builtins:
             parts.append(_CLASSIFICATION_INSTRUCTIONS[skill_id])

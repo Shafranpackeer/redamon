@@ -71,6 +71,13 @@ from .sql_injection_prompts import (
     SQLI_PAYLOAD_REFERENCE,
 )
 
+# Re-export from XSS prompts
+from .xss_prompts import (
+    XSS_TOOLS,
+    XSS_OOB_WORKFLOW,
+    XSS_PAYLOAD_REFERENCE,
+)
+
 # Re-export from unclassified attack path prompts
 from .unclassified_prompts import UNCLASSIFIED_EXPLOIT_TOOLS
 
@@ -85,7 +92,7 @@ from .stealth_rules import STEALTH_MODE_RULES
 
 # Import utilities
 from utils import get_session_config_prompt
-from project_settings import get_setting, get_allowed_tools_for_phase, get_hydra_flags_from_settings, get_dos_settings_dict
+from project_settings import get_setting, get_allowed_tools_for_phase, get_hydra_flags_from_settings, get_dos_settings_dict, get_xss_settings_dict
 
 
 def _msf_search_failed(execution_trace: list) -> bool:
@@ -269,6 +276,14 @@ def get_phase_tools(
             parts.append(SQLI_OOB_WORKFLOW)
             parts.append(SQLI_PAYLOAD_REFERENCE)
             return True
+        elif (attack_path_type == "xss"
+                and "xss" in enabled_builtins
+                and "kali_shell" in allowed_tools):
+            xss_settings = get_xss_settings_dict()
+            parts.append(XSS_TOOLS.format(**xss_settings))
+            parts.append(XSS_OOB_WORKFLOW)
+            parts.append(XSS_PAYLOAD_REFERENCE)
+            return True
         elif ("cve_exploit" == attack_path_type
                 and "cve_exploit" in enabled_builtins
                 and "metasploit_console" in allowed_tools):
@@ -386,6 +401,10 @@ __all__ = [
     "SQLI_TOOLS",
     "SQLI_OOB_WORKFLOW",
     "SQLI_PAYLOAD_REFERENCE",
+    # XSS
+    "XSS_TOOLS",
+    "XSS_OOB_WORKFLOW",
+    "XSS_PAYLOAD_REFERENCE",
     # Unclassified attack path
     "UNCLASSIFIED_EXPLOIT_TOOLS",
     # Post-exploitation

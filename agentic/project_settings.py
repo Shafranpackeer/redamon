@@ -126,6 +126,13 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
     'SQLI_RISK': 1,                     # sqlmap --risk (1-3, higher = more aggressive tests)
     'SQLI_TAMPER_SCRIPTS': '',          # Comma-separated tamper scripts (e.g., "space2comment,randomcase")
 
+    # XSS Testing
+    'XSS_WORKERS': 10,                  # Dalfox concurrent workers
+    'XSS_WAF_BYPASS': False,            # Enable WAF evasion techniques
+    'XSS_DEEP_DOM': False,              # Enable deep DOM-based XSS analysis
+    'XSS_MAX_ATTEMPTS': 3,              # Max retry attempts per parameter
+    'XSS_TIMEOUT': 30,                  # Timeout per scan in seconds
+
     # Attack Skill Configuration
     'ATTACK_SKILL_CONFIG': {
         'builtIn': {
@@ -134,6 +141,7 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
             'phishing_social_engineering': False,
             'denial_of_service': False,
             'sql_injection': True,
+            'xss': False,
         },
         'user': {},
     },
@@ -253,6 +261,14 @@ def fetch_agent_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
     settings['DOS_MAX_ATTEMPTS'] = project.get('dosMaxAttempts', DEFAULT_AGENT_SETTINGS['DOS_MAX_ATTEMPTS'])
     settings['DOS_CONCURRENT_CONNECTIONS'] = project.get('dosConcurrentConnections', DEFAULT_AGENT_SETTINGS['DOS_CONCURRENT_CONNECTIONS'])
     settings['DOS_ASSESSMENT_ONLY'] = project.get('dosAssessmentOnly', DEFAULT_AGENT_SETTINGS['DOS_ASSESSMENT_ONLY'])
+    settings['SQLI_LEVEL'] = project.get('sqliLevel', DEFAULT_AGENT_SETTINGS['SQLI_LEVEL'])
+    settings['SQLI_RISK'] = project.get('sqliRisk', DEFAULT_AGENT_SETTINGS['SQLI_RISK'])
+    settings['SQLI_TAMPER_SCRIPTS'] = project.get('sqliTamperScripts', DEFAULT_AGENT_SETTINGS['SQLI_TAMPER_SCRIPTS'])
+    settings['XSS_WORKERS'] = project.get('xssWorkers', DEFAULT_AGENT_SETTINGS['XSS_WORKERS'])
+    settings['XSS_WAF_BYPASS'] = project.get('xssWafBypass', DEFAULT_AGENT_SETTINGS['XSS_WAF_BYPASS'])
+    settings['XSS_DEEP_DOM'] = project.get('xssDeepDom', DEFAULT_AGENT_SETTINGS['XSS_DEEP_DOM'])
+    settings['XSS_MAX_ATTEMPTS'] = project.get('xssMaxAttempts', DEFAULT_AGENT_SETTINGS['XSS_MAX_ATTEMPTS'])
+    settings['XSS_TIMEOUT'] = project.get('xssTimeout', DEFAULT_AGENT_SETTINGS['XSS_TIMEOUT'])
     settings['ATTACK_SKILL_CONFIG'] = project.get('attackSkillConfig', DEFAULT_AGENT_SETTINGS['ATTACK_SKILL_CONFIG'])
     settings['USER_ATTACK_SKILLS'] = project.get('userAttackSkills', DEFAULT_AGENT_SETTINGS['USER_ATTACK_SKILLS'])
 
@@ -514,4 +530,15 @@ def get_dos_settings_dict() -> dict:
         'dos_max_duration': get_setting('DOS_MAX_DURATION', 60),
         'dos_max_attempts': get_setting('DOS_MAX_ATTEMPTS', 3),
         'dos_connections': get_setting('DOS_CONCURRENT_CONNECTIONS', 1000),
+    }
+
+
+def get_xss_settings_dict() -> dict:
+    """Get XSS settings as a dict for prompt template injection."""
+    return {
+        'xss_workers': get_setting('XSS_WORKERS', 10),
+        'xss_waf_bypass': get_setting('XSS_WAF_BYPASS', False),
+        'xss_deep_dom': get_setting('XSS_DEEP_DOM', False),
+        'xss_max_attempts': get_setting('XSS_MAX_ATTEMPTS', 3),
+        'xss_timeout': get_setting('XSS_TIMEOUT', 30),
     }

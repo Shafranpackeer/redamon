@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Bug, KeyRound, Mail, Swords, Loader2, Settings, Zap, Database } from 'lucide-react'
+import { ChevronDown, Bug, KeyRound, Mail, Swords, Loader2, Settings, Zap, Database, Code } from 'lucide-react'
 import type { Project } from '@prisma/client'
 import { useProject } from '@/providers/ProjectProvider'
 import { Toggle } from '@/components/ui/Toggle/Toggle'
@@ -10,6 +10,7 @@ import { HydraSection } from './BruteForceSection'
 import { PhishingSection } from './PhishingSection'
 import { DosSection } from './DosSection'
 import { SqliSection } from './SqliSection'
+import { XssSection } from './XssSection'
 import styles from '../ProjectForm.module.css'
 
 type FormData = Omit<Project, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'user'>
@@ -64,6 +65,12 @@ const BUILT_IN_SKILLS: BuiltInSkillDef[] = [
     description: 'Assess service resilience using flooding, resource exhaustion, and crash vectors',
     icon: <Zap size={16} />,
   },
+  {
+    id: 'xss',
+    name: 'XSS Testing',
+    description: 'Cross-site scripting detection with Dalfox, DOM analysis, and blind XSS via OOB callbacks',
+    icon: <Code size={16} />,
+  },
 ]
 
 type AttackSkillConfig = {
@@ -78,6 +85,7 @@ const DEFAULT_CONFIG: AttackSkillConfig = {
     brute_force_credential_guess: false,
     phishing_social_engineering: false,
     denial_of_service: false,
+    xss: false,
   },
   user: {},
 }
@@ -226,6 +234,9 @@ export function AttackSkillsSection({ data, updateField }: AttackSkillsSectionPr
                   )}
                   {enabled && skill.id === 'sql_injection' && (
                     <SqliSection data={data} updateField={updateField} />
+                  )}
+                  {enabled && skill.id === 'xss' && (
+                    <XssSection data={data} updateField={updateField} />
                   )}
                 </div>
               )
