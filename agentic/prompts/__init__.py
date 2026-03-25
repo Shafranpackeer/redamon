@@ -64,6 +64,15 @@ from .denial_of_service_prompts import (
     DOS_VERIFICATION_GUIDE,
 )
 
+# Re-export from SQL injection prompts
+from .sql_injection_prompts import (
+    SQL_INJECTION_TOOLS,
+    SQL_INJECTION_TECHNIQUES,
+    SQL_INJECTION_WAF_BYPASS,
+    SQL_INJECTION_AUTH_BYPASS,
+    SQL_INJECTION_POST_EXPLOITATION,
+)
+
 # Re-export from unclassified attack path prompts
 from .unclassified_prompts import UNCLASSIFIED_EXPLOIT_TOOLS
 
@@ -78,7 +87,7 @@ from .stealth_rules import STEALTH_MODE_RULES
 
 # Import utilities
 from utils import get_session_config_prompt
-from project_settings import get_setting, get_allowed_tools_for_phase, get_hydra_flags_from_settings, get_dos_settings_dict
+from project_settings import get_setting, get_allowed_tools_for_phase, get_hydra_flags_from_settings, get_dos_settings_dict, get_sqli_settings_dict
 
 
 def _msf_search_failed(execution_trace: list) -> bool:
@@ -266,6 +275,13 @@ def get_phase_tools(
             ))
             parts.append(DOS_VECTOR_SELECTION.format(**dos_settings))
             parts.append(DOS_VERIFICATION_GUIDE)
+        elif (attack_path_type == "sql_injection"
+                and "sql_injection" in enabled_builtins):
+            # SQL Injection workflow — inject SQLi settings into prompt templates
+            sqli_settings = get_sqli_settings_dict()
+            parts.append(SQL_INJECTION_TOOLS.format(**sqli_settings))
+            parts.append(SQL_INJECTION_TECHNIQUES)
+            parts.append(SQL_INJECTION_WAF_BYPASS)
         elif attack_path_type.startswith("user_skill:"):
             # User-uploaded attack skill — inject its .md content as workflow
             user_skill_content = _resolve_user_skill()
@@ -361,6 +377,12 @@ __all__ = [
     "DOS_TOOLS",
     "DOS_VECTOR_SELECTION",
     "DOS_VERIFICATION_GUIDE",
+    # SQL Injection
+    "SQL_INJECTION_TOOLS",
+    "SQL_INJECTION_TECHNIQUES",
+    "SQL_INJECTION_WAF_BYPASS",
+    "SQL_INJECTION_AUTH_BYPASS",
+    "SQL_INJECTION_POST_EXPLOITATION",
     # Unclassified attack path
     "UNCLASSIFIED_EXPLOIT_TOOLS",
     # Post-exploitation

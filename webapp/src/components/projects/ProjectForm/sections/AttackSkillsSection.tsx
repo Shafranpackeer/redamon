@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Bug, KeyRound, Mail, Swords, Loader2, Settings, Zap } from 'lucide-react'
+import { ChevronDown, Bug, KeyRound, Mail, Swords, Loader2, Settings, Zap, Database } from 'lucide-react'
 import type { Project } from '@prisma/client'
 import { useProject } from '@/providers/ProjectProvider'
 import { Toggle } from '@/components/ui/Toggle/Toggle'
 import { HydraSection } from './BruteForceSection'
 import { PhishingSection } from './PhishingSection'
 import { DosSection } from './DosSection'
+import { SqliSection } from './SqliSection'
 import styles from '../ProjectForm.module.css'
 
 type FormData = Omit<Project, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'user'>
@@ -57,6 +58,12 @@ const BUILT_IN_SKILLS: BuiltInSkillDef[] = [
     description: 'Assess service resilience using flooding, resource exhaustion, and crash vectors',
     icon: <Zap size={16} />,
   },
+  {
+    id: 'sql_injection',
+    name: 'SQL Injection',
+    description: 'Detect and exploit SQL injection vulnerabilities in web applications using SQLMap',
+    icon: <Database size={16} />,
+  },
 ]
 
 type AttackSkillConfig = {
@@ -70,6 +77,7 @@ const DEFAULT_CONFIG: AttackSkillConfig = {
     brute_force_credential_guess: false,
     phishing_social_engineering: false,
     denial_of_service: false,
+    sql_injection: false,
   },
   user: {},
 }
@@ -215,6 +223,9 @@ export function AttackSkillsSection({ data, updateField }: AttackSkillsSectionPr
                   )}
                   {enabled && skill.id === 'denial_of_service' && (
                     <DosSection data={data} updateField={updateField} />
+                  )}
+                  {enabled && skill.id === 'sql_injection' && (
+                    <SqliSection data={data} updateField={updateField} />
                   )}
                 </div>
               )

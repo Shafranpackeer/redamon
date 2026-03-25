@@ -37,18 +37,24 @@ _DOS_SECTION = """### denial_of_service
 - Keywords: dos, denial of service, crash, disrupt, availability, slowloris, flood, exhaust, stress test, take down, knock offline, overwhelm
 """
 
+_SQL_INJECTION_SECTION = """### sql_injection
+- SQL injection attacks against web application databases via malicious SQL queries
+- Includes: error-based, union-based, blind (boolean/time-based), out-of-band (OOB/DNS) injection
+- Key distinction: attacker injects SQL commands into web app parameters to extract/modify database data
+- Keywords: sql injection, sqli, union select, blind injection, sqlmap, database dump, auth bypass, sql error, information_schema
+"""
+
 _UNCLASSIFIED_SECTION = """### <descriptive_term>-unclassified
 - ANY exploitation request that does NOT clearly fit the enabled attack skills above
 - The agent has no specialized workflow for these — it will use available tools generically
 - **Key distinction from phishing:** the attacker directly interacts with a SERVICE/APPLICATION, NOT generating a payload for a target user to execute
-  - "Try SQL injection on the web app" → unclassified (attacker sends crafted input to a web service)
+  - "Test for SSRF on the API" → unclassified (attacker sends crafted input to a web service)
   - "Generate a reverse shell payload" → phishing (attacker creates a file for a target user to execute)
 - You MUST create a short, descriptive snake_case term followed by "-unclassified"
 - Format: `<term>-unclassified` where term is 1-4 lowercase words joined by underscores
-- Example values: "sql_injection-unclassified", "ssrf-unclassified", "xss-unclassified", "file_upload-unclassified", "directory_traversal-unclassified"
-- Keywords: SQL injection, XSS, cross-site scripting, directory traversal, path traversal, SSRF, file upload, command injection, LFI, RFI, deserialization, XXE, privilege escalation
+- Example values: "ssrf-unclassified", "xss-unclassified", "file_upload-unclassified", "directory_traversal-unclassified", "command_injection-unclassified"
+- Keywords: XSS, cross-site scripting, directory traversal, path traversal, SSRF, file upload, command injection, LFI, RFI, deserialization, XXE, privilege escalation
 - Example requests:
-  - "Try SQL injection on the web app" -> "sql_injection-unclassified"
   - "Test for SSRF on the API" -> "ssrf-unclassified"
   - "Try to upload a web shell" -> "file_upload-unclassified"
   - "Test for XSS on the login page" -> "xss-unclassified"
@@ -62,6 +68,7 @@ _BUILTIN_SKILL_MAP = {
     'brute_force_credential_guess': (_BRUTE_FORCE_SECTION, 'b', 'brute_force_credential_guess'),
     'cve_exploit': (_CVE_EXPLOIT_SECTION, 'c', 'cve_exploit'),
     'denial_of_service': (_DOS_SECTION, 'd', 'denial_of_service'),
+    'sql_injection': (_SQL_INJECTION_SECTION, 'e', 'sql_injection'),
 }
 
 # Priority order for built-in classification instructions
@@ -85,6 +92,11 @@ _PRIORITY_INSTRUCTIONS = {
       - Does it mention DoS, denial of service, flooding, slowloris, stress test, take down, exhaust resources?
       - Is the user NOT trying to get a shell, steal data, or obtain credentials?
       - If YES → "denial_of_service" """,
+    'sql_injection': """   {letter}. **sql_injection**:
+      - Does the request mention SQL injection, SQLi, database injection, or injecting SQL queries?
+      - Does it target web application parameters to extract or modify database data?
+      - Does it mention sqlmap, union select, blind injection, error-based injection, auth bypass via SQL?
+      - If YES → "sql_injection" """,
 }
 
 
@@ -148,7 +160,7 @@ def build_classification_prompt(objective: str) -> str:
     parts.append("## Attack Skill Types (ONLY for exploitation phase)\n")
 
     # Built-in skills (only enabled ones)
-    for skill_id in ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service']:
+    for skill_id in ['phishing_social_engineering', 'brute_force_credential_guess', 'sql_injection', 'cve_exploit', 'denial_of_service']:
         if skill_id in enabled_builtins:
             section_text, _, _ = _BUILTIN_SKILL_MAP[skill_id]
             parts.append(section_text)
@@ -178,7 +190,7 @@ def build_classification_prompt(objective: str) -> str:
 
     # Build priority list dynamically
     letter = ord('a')
-    priority_order = ['phishing_social_engineering', 'brute_force_credential_guess', 'cve_exploit', 'denial_of_service']
+    priority_order = ['phishing_social_engineering', 'brute_force_credential_guess', 'sql_injection', 'cve_exploit', 'denial_of_service']
     for skill_id in priority_order:
         if skill_id in enabled_builtins:
             instruction = _PRIORITY_INSTRUCTIONS[skill_id].format(letter=chr(letter))
