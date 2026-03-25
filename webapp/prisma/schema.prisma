@@ -476,8 +476,16 @@ model Project {
   dosConcurrentConnections              Int      @default(1000) @map("dos_concurrent_connections")
   dosAssessmentOnly                     Boolean  @default(false) @map("dos_assessment_only")
 
+  // ========== SQL INJECTION SETTINGS ==========
+  sqliRisk                              Int      @default(2) @map("sqli_risk")
+  sqliLevel                             Int      @default(3) @map("sqli_level")
+  sqliTamper                            String   @default("space2comment") @map("sqli_tamper")
+  sqliMaxAttempts                       Int      @default(3) @map("sqli_max_attempts")
+  sqliThreads                           Int      @default(5) @map("sqli_threads")
+  sqliTimeout                           Int      @default(30) @map("sqli_timeout")
+
   // ========== ATTACK SKILL CONFIG ==========
-  attackSkillConfig                    Json     @default("{\"builtIn\":{\"cve_exploit\":true,\"brute_force_credential_guess\":true,\"phishing_social_engineering\":true,\"denial_of_service\":true},\"user\":{}}") @map("attack_skill_config")
+  attackSkillConfig                    Json     @default("{\"builtIn\":{\"cve_exploit\":true,\"brute_force_credential_guess\":true,\"phishing_social_engineering\":true,\"denial_of_service\":true,\"sql_injection\":false},\"user\":{}}") @map("attack_skill_config")
 
   // ========== CYPHERFIX SETTINGS ==========
   cypherfixGithubToken              String   @default("") @map("cypherfix_github_token")

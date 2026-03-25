@@ -121,6 +121,14 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
     'DOS_CONCURRENT_CONNECTIONS': 1000, # Connections for app-layer DoS (slowloris etc.)
     'DOS_ASSESSMENT_ONLY': False,       # True = only check vulnerability, don't attack
 
+    # SQL Injection Testing
+    'SQLI_RISK': 2,                     # SQLMap risk level (1=safe, 2=medium, 3=aggressive)
+    'SQLI_LEVEL': 3,                    # SQLMap level (1-5, higher = more tests)
+    'SQLI_TAMPER': 'space2comment',     # Default tamper script(s), comma-separated
+    'SQLI_MAX_ATTEMPTS': 3,             # Max different injection techniques to try
+    'SQLI_THREADS': 5,                  # SQLMap threads
+    'SQLI_TIMEOUT': 30,                 # SQLMap connection timeout
+
     # Attack Skill Configuration
     'ATTACK_SKILL_CONFIG': {
         'builtIn': {
@@ -128,6 +136,7 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
             'brute_force_credential_guess': False,
             'phishing_social_engineering': False,
             'denial_of_service': False,
+            'sql_injection': False,
         },
         'user': {},
     },
@@ -247,6 +256,12 @@ def fetch_agent_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
     settings['DOS_MAX_ATTEMPTS'] = project.get('dosMaxAttempts', DEFAULT_AGENT_SETTINGS['DOS_MAX_ATTEMPTS'])
     settings['DOS_CONCURRENT_CONNECTIONS'] = project.get('dosConcurrentConnections', DEFAULT_AGENT_SETTINGS['DOS_CONCURRENT_CONNECTIONS'])
     settings['DOS_ASSESSMENT_ONLY'] = project.get('dosAssessmentOnly', DEFAULT_AGENT_SETTINGS['DOS_ASSESSMENT_ONLY'])
+    settings['SQLI_RISK'] = project.get('sqliRisk', DEFAULT_AGENT_SETTINGS['SQLI_RISK'])
+    settings['SQLI_LEVEL'] = project.get('sqliLevel', DEFAULT_AGENT_SETTINGS['SQLI_LEVEL'])
+    settings['SQLI_TAMPER'] = project.get('sqliTamper', DEFAULT_AGENT_SETTINGS['SQLI_TAMPER'])
+    settings['SQLI_MAX_ATTEMPTS'] = project.get('sqliMaxAttempts', DEFAULT_AGENT_SETTINGS['SQLI_MAX_ATTEMPTS'])
+    settings['SQLI_THREADS'] = project.get('sqliThreads', DEFAULT_AGENT_SETTINGS['SQLI_THREADS'])
+    settings['SQLI_TIMEOUT'] = project.get('sqliTimeout', DEFAULT_AGENT_SETTINGS['SQLI_TIMEOUT'])
     settings['ATTACK_SKILL_CONFIG'] = project.get('attackSkillConfig', DEFAULT_AGENT_SETTINGS['ATTACK_SKILL_CONFIG'])
     settings['USER_ATTACK_SKILLS'] = project.get('userAttackSkills', DEFAULT_AGENT_SETTINGS['USER_ATTACK_SKILLS'])
 
@@ -508,4 +523,16 @@ def get_dos_settings_dict() -> dict:
         'dos_max_duration': get_setting('DOS_MAX_DURATION', 60),
         'dos_max_attempts': get_setting('DOS_MAX_ATTEMPTS', 3),
         'dos_connections': get_setting('DOS_CONCURRENT_CONNECTIONS', 1000),
+    }
+
+
+def get_sqli_settings_dict() -> dict:
+    """Get SQL injection settings as a dict for prompt template injection."""
+    return {
+        'sqli_risk': get_setting('SQLI_RISK', 2),
+        'sqli_level': get_setting('SQLI_LEVEL', 3),
+        'sqli_tamper': get_setting('SQLI_TAMPER', 'space2comment'),
+        'sqli_max_attempts': get_setting('SQLI_MAX_ATTEMPTS', 3),
+        'sqli_threads': get_setting('SQLI_THREADS', 5),
+        'sqli_timeout': get_setting('SQLI_TIMEOUT', 30),
     }
