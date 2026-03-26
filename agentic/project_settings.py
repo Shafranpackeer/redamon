@@ -126,6 +126,13 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
     'SQLI_RISK': 1,                     # sqlmap --risk (1-3, higher = more aggressive tests)
     'SQLI_TAMPER_SCRIPTS': '',          # Comma-separated tamper scripts (e.g., "space2comment,randomcase")
 
+    # SSRF Testing
+    'SSRF_TIMEOUT': 10,                 # Request timeout in seconds
+    'SSRF_FOLLOW_REDIRECTS': True,      # Follow HTTP redirects
+    'SSRF_CLOUD_METADATA': True,        # Test cloud metadata endpoints (AWS/GCP/Azure)
+    'SSRF_PROTOCOL_SMUGGLE': False,     # Test gopher/dict/file protocols
+    'SSRF_INTERNAL_SCAN': False,        # Scan internal network ranges
+
     # Attack Skill Configuration
     'ATTACK_SKILL_CONFIG': {
         'builtIn': {
@@ -134,6 +141,7 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
             'phishing_social_engineering': False,
             'denial_of_service': False,
             'sql_injection': True,
+            'ssrf': False,
         },
         'user': {},
     },
@@ -253,6 +261,11 @@ def fetch_agent_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
     settings['DOS_MAX_ATTEMPTS'] = project.get('dosMaxAttempts', DEFAULT_AGENT_SETTINGS['DOS_MAX_ATTEMPTS'])
     settings['DOS_CONCURRENT_CONNECTIONS'] = project.get('dosConcurrentConnections', DEFAULT_AGENT_SETTINGS['DOS_CONCURRENT_CONNECTIONS'])
     settings['DOS_ASSESSMENT_ONLY'] = project.get('dosAssessmentOnly', DEFAULT_AGENT_SETTINGS['DOS_ASSESSMENT_ONLY'])
+    settings['SSRF_TIMEOUT'] = project.get('ssrfTimeout', DEFAULT_AGENT_SETTINGS['SSRF_TIMEOUT'])
+    settings['SSRF_FOLLOW_REDIRECTS'] = project.get('ssrfFollowRedirects', DEFAULT_AGENT_SETTINGS['SSRF_FOLLOW_REDIRECTS'])
+    settings['SSRF_CLOUD_METADATA'] = project.get('ssrfCloudMetadata', DEFAULT_AGENT_SETTINGS['SSRF_CLOUD_METADATA'])
+    settings['SSRF_PROTOCOL_SMUGGLE'] = project.get('ssrfProtocolSmuggle', DEFAULT_AGENT_SETTINGS['SSRF_PROTOCOL_SMUGGLE'])
+    settings['SSRF_INTERNAL_SCAN'] = project.get('ssrfInternalScan', DEFAULT_AGENT_SETTINGS['SSRF_INTERNAL_SCAN'])
     settings['ATTACK_SKILL_CONFIG'] = project.get('attackSkillConfig', DEFAULT_AGENT_SETTINGS['ATTACK_SKILL_CONFIG'])
     settings['USER_ATTACK_SKILLS'] = project.get('userAttackSkills', DEFAULT_AGENT_SETTINGS['USER_ATTACK_SKILLS'])
 
@@ -514,4 +527,15 @@ def get_dos_settings_dict() -> dict:
         'dos_max_duration': get_setting('DOS_MAX_DURATION', 60),
         'dos_max_attempts': get_setting('DOS_MAX_ATTEMPTS', 3),
         'dos_connections': get_setting('DOS_CONCURRENT_CONNECTIONS', 1000),
+    }
+
+
+def get_ssrf_settings_dict() -> dict:
+    """Get SSRF settings as a dict for prompt template injection."""
+    return {
+        'ssrf_timeout': get_setting('SSRF_TIMEOUT', 10),
+        'ssrf_follow_redirects': get_setting('SSRF_FOLLOW_REDIRECTS', True),
+        'ssrf_cloud_metadata': get_setting('SSRF_CLOUD_METADATA', True),
+        'ssrf_protocol_smuggle': get_setting('SSRF_PROTOCOL_SMUGGLE', False),
+        'ssrf_internal_scan': get_setting('SSRF_INTERNAL_SCAN', False),
     }
