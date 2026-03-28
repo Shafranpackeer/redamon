@@ -83,6 +83,10 @@ RUN go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
     && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
     && go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
 
+# Install Dalfox (XSS vulnerability scanner)
+# Source: https://github.com/hahwul/dalfox (MIT)
+RUN go install -v github.com/hahwul/dalfox/v2@latest
+
 # Update nuclei templates
 RUN nuclei -update-templates || true
 

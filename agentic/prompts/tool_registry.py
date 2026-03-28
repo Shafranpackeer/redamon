@@ -106,7 +106,7 @@ TOOL_REGISTRY = {
             '**kali_shell** (Kali Linux shell — bash -c)\n'
             '   - Full Kali toolset. Timeout: 120s.\n'
             '   - **CLI tools:** netcat, socat, rlwrap, msfvenom, searchsploit, sqlmap, '
-            'john, smbclient, sshpass, jq, git, wget, gcc/g++/make, perl, hping3, slowhttptest, interactsh-client\n'
+            'john, smbclient, sshpass, jq, git, wget, gcc/g++/make, perl, hping3, slowhttptest, interactsh-client, dalfox\n'
             '   - **Python libs** (for one-liners via `python3 -c`): '
             'requests, beautifulsoup4, pycryptodome, PyJWT, paramiko, impacket, pwntools\n'
             '   - For multi-line scripts use **execute_code** instead (avoids shell escaping)\n'
