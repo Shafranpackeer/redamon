@@ -787,10 +787,12 @@ def fetch_project_settings(project_id: str, webapp_url: str) -> dict[str, Any]:
     # OSINT & Threat Intelligence Enrichment
     settings['CENSYS_ENABLED'] = project.get('censysEnabled', DEFAULT_SETTINGS['CENSYS_ENABLED'])
     settings['FOFA_ENABLED'] = project.get('fofaEnabled', DEFAULT_SETTINGS['FOFA_ENABLED'])
+    settings['FOFA_MAX_RESULTS'] = int(project.get('fofaMaxResults', DEFAULT_SETTINGS['FOFA_MAX_RESULTS']) or DEFAULT_SETTINGS['FOFA_MAX_RESULTS'])
     settings['OTX_ENABLED'] = project.get('otxEnabled', DEFAULT_SETTINGS['OTX_ENABLED'])
     settings['NETLAS_ENABLED'] = project.get('netlasEnabled', DEFAULT_SETTINGS['NETLAS_ENABLED'])
     settings['VIRUSTOTAL_ENABLED'] = project.get('virusTotalEnabled', DEFAULT_SETTINGS['VIRUSTOTAL_ENABLED'])
     settings['ZOOMEYE_ENABLED'] = project.get('zoomEyeEnabled', DEFAULT_SETTINGS['ZOOMEYE_ENABLED'])
+    settings['ZOOMEYE_MAX_RESULTS'] = project.get('zoomEyeMaxResults', DEFAULT_SETTINGS['ZOOMEYE_MAX_RESULTS'])
     settings['CRIMINALIP_ENABLED'] = project.get('criminalIpEnabled', DEFAULT_SETTINGS['CRIMINALIP_ENABLED'])
 
     # Subdomain Discovery Tool Toggles

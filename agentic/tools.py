@@ -1047,6 +1047,9 @@ class CensysToolManager:
                 os_info = result.get("operating_system", {}).get("product")
                 if os_info:
                     lines.append(f"OS: {os_info}")
+                rdns = result.get("dns", {}).get("reverse_dns", {}).get("names", [])
+                if rdns:
+                    lines.append(f"Reverse DNS: {', '.join(rdns[:5])}")
                 services = result.get("services", [])
                 if services:
                     lines.append(f"\nServices ({len(services)}):")
@@ -1054,16 +1057,24 @@ class CensysToolManager:
                         port = s.get("port", "?")
                         proto = s.get("transport_protocol", "tcp")
                         name = s.get("service_name", "")
+                        ext = s.get("extended_service_name", "")
                         sw = s.get("software", [])
                         sw_str = ", ".join(
                             f"{x.get('product', '')} {x.get('version', '')}".strip()
                             for x in sw[:2] if isinstance(x, dict)
                         ) if sw else ""
                         line = f"  {port}/{proto}"
-                        if name:
-                            line += f"  {name}"
+                        disp_name = ext or name
+                        if disp_name:
+                            line += f"  {disp_name}"
                         if sw_str:
                             line += f"  ({sw_str})"
+                        tls = s.get("tls", {})
+                        if isinstance(tls, dict) and tls.get("certificates", {}).get("leaf_data", {}).get("subject_dn"):
+                            cert = tls["certificates"]["leaf_data"]
+                            cn = cert.get("subject", {}).get("common_name", [""])
+                            cn_str = cn[0] if isinstance(cn, list) and cn else str(cn)
+                            line += f"  [TLS: {cn_str}]"
                         lines.append(line)
                 return "\n".join(lines)
 
@@ -1160,9 +1171,7 @@ class OtxToolManager:
         self.key_rotator = None
 
     def get_tool(self) -> Optional[callable]:
-        if not self.api_key:
-            logger.warning("OTX API key not configured - otx tool unavailable.")
-            return None
+        # Allow anonymous requests (OTX API v1 works without a key at reduced rate)
         manager = self
 
         @tool
@@ -1171,8 +1180,8 @@ class OtxToolManager:
             AlienVault OTX threat intelligence lookup.
 
             Actions:
-            - ip_report: Threat intel for an IP (pulses, malware, passive DNS, reputation)
-            - domain_report: Threat intel for a domain (pulses, passive DNS, WHOIS, malware)
+            - ip_report: Threat intel for an IP (pulses, adversary, malware samples, passive DNS, reputation, geo)
+            - domain_report: Threat intel for a domain (pulses, adversary, malware samples, WHOIS, historical IPs)
 
             Args:
                 action: "ip_report" or "domain_report"
@@ -1183,7 +1192,7 @@ class OtxToolManager:
                 Threat intelligence summary from OTX
             """
             api_key = manager.key_rotator.current_key if manager.key_rotator and manager.key_rotator.has_keys else manager.api_key
-            headers = {"X-OTX-API-KEY": api_key}
+            headers = {"X-OTX-API-KEY": api_key} if api_key else {}
             try:
                 async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
                     if action == "ip_report":
@@ -1205,13 +1214,49 @@ class OtxToolManager:
                             lines.append(f"Location: {loc_str}")
                         if geo.get("asn"):
                             lines.append(f"ASN: {geo['asn']}")
+                        # Pulse details: adversaries, malware families, attack IDs
                         pulse_refs = data.get("pulse_info", {}).get("pulses", [])
                         if pulse_refs:
-                            lines.append(f"\nTop Pulses ({min(len(pulse_refs), 10)}):")
-                            for p in pulse_refs[:10]:
+                            adversaries = sorted({p.get("adversary", "").strip() for p in pulse_refs if p.get("adversary", "").strip()})
+                            if adversaries:
+                                lines.append(f"Adversaries: {', '.join(adversaries[:5])}")
+                            mf_set: set[str] = set()
+                            for p in pulse_refs:
+                                for mf in p.get("malware_families") or []:
+                                    name = (mf.get("display_name") or mf.get("id") or "") if isinstance(mf, dict) else str(mf)
+                                    if name:
+                                        mf_set.add(name.strip())
+                            if mf_set:
+                                lines.append(f"Malware Families: {', '.join(sorted(mf_set)[:5])}")
+                            tlp_vals = {(p.get("TLP") or p.get("tlp") or "").lower().strip() for p in pulse_refs if p.get("TLP") or p.get("tlp")}
+                            if tlp_vals:
+                                lines.append(f"TLP values seen: {', '.join(sorted(tlp_vals))}")
+                            lines.append(f"\nTop Pulses ({min(len(pulse_refs), 5)}):")
+                            for p in pulse_refs[:5]:
                                 name = p.get("name", "")
-                                tags = ", ".join(p.get("tags", [])[:5])
-                                lines.append(f"  - {name}" + (f"  tags=[{tags}]" if tags else ""))
+                                adv = p.get("adversary", "")
+                                tags = ", ".join(p.get("tags", [])[:4])
+                                detail = f"  - {name}"
+                                if adv:
+                                    detail += f"  [adversary: {adv}]"
+                                if tags:
+                                    detail += f"  tags=[{tags}]"
+                                lines.append(detail)
+                        # Malware samples
+                        try:
+                            ml_resp = await client.get(f"{manager.API_BASE}/indicators/IPv4/{ip}/malware")
+                            if ml_resp.status_code == 200:
+                                ml_data = ml_resp.json().get("data") or []
+                                if ml_data:
+                                    lines.append(f"\nMalware Samples ({len(ml_data)} total, showing top 5):")
+                                    for s in ml_data[:5]:
+                                        h = s.get("hash") or s.get("sha256") or s.get("md5") or "?"
+                                        ft = s.get("type") or s.get("file_class") or ""
+                                        fn = s.get("file_name") or ""
+                                        lines.append(f"  - {h[:20]}...  type={ft}  name={fn}")
+                        except Exception:
+                            pass
+
                     elif action == "domain_report":
                         if not domain:
                             return "Error: 'domain' required for action='domain_report'"
@@ -1224,13 +1269,58 @@ class OtxToolManager:
                         whois = data.get("whois", {}) or {}
                         if whois.get("registrant"):
                             lines.append(f"Registrant: {whois['registrant']}")
+                        # Pulse details
                         pulse_refs = data.get("pulse_info", {}).get("pulses", [])
                         if pulse_refs:
-                            lines.append(f"\nTop Pulses ({min(len(pulse_refs), 10)}):")
-                            for p in pulse_refs[:10]:
+                            adversaries = sorted({p.get("adversary", "").strip() for p in pulse_refs if p.get("adversary", "").strip()})
+                            if adversaries:
+                                lines.append(f"Adversaries: {', '.join(adversaries[:5])}")
+                            mf_set_d: set[str] = set()
+                            for p in pulse_refs:
+                                for mf in p.get("malware_families") or []:
+                                    name = (mf.get("display_name") or mf.get("id") or "") if isinstance(mf, dict) else str(mf)
+                                    if name:
+                                        mf_set_d.add(name.strip())
+                            if mf_set_d:
+                                lines.append(f"Malware Families: {', '.join(sorted(mf_set_d)[:5])}")
+                            lines.append(f"\nTop Pulses ({min(len(pulse_refs), 5)}):")
+                            for p in pulse_refs[:5]:
                                 name = p.get("name", "")
-                                tags = ", ".join(p.get("tags", [])[:5])
-                                lines.append(f"  - {name}" + (f"  tags=[{tags}]" if tags else ""))
+                                adv = p.get("adversary", "")
+                                tags = ", ".join(p.get("tags", [])[:4])
+                                detail = f"  - {name}"
+                                if adv:
+                                    detail += f"  [adversary: {adv}]"
+                                if tags:
+                                    detail += f"  tags=[{tags}]"
+                                lines.append(detail)
+                        # Malware samples
+                        try:
+                            ml_resp = await client.get(f"{manager.API_BASE}/indicators/domain/{domain}/malware")
+                            if ml_resp.status_code == 200:
+                                ml_data = ml_resp.json().get("data") or []
+                                if ml_data:
+                                    lines.append(f"\nMalware Samples ({len(ml_data)} total, showing top 5):")
+                                    for s in ml_data[:5]:
+                                        h = s.get("hash") or s.get("sha256") or s.get("md5") or "?"
+                                        ft = s.get("type") or s.get("file_class") or ""
+                                        fn = s.get("file_name") or ""
+                                        lines.append(f"  - {h[:20]}...  type={ft}  name={fn}")
+                        except Exception:
+                            pass
+                        # Historical IPs (domain passive_dns)
+                        try:
+                            dpd_resp = await client.get(f"{manager.API_BASE}/indicators/domain/{domain}/passive_dns")
+                            if dpd_resp.status_code == 200:
+                                hist_records = dpd_resp.json().get("passive_dns") or []
+                                if hist_records:
+                                    lines.append(f"\nHistorical IPs ({len(hist_records)} records, showing top 5):")
+                                    for r in hist_records[:5]:
+                                        addr = r.get("address") or r.get("hostname") or "?"
+                                        last = r.get("last") or ""
+                                        lines.append(f"  - {addr}  last={last[:10] if last else '?'}")
+                        except Exception:
+                            pass
                     else:
                         return f"Error: Unknown action '{action}'. Valid: ip_report, domain_report"
                 if manager.key_rotator:
@@ -1242,7 +1332,8 @@ class OtxToolManager:
                 logger.error(f"OTX {action} failed: {e}")
                 return f"OTX error: {str(e)}"
 
-        logger.info("OTX threat intelligence tool configured (2 actions)")
+        key_mode = "authenticated" if (self.api_key or (self.key_rotator and getattr(self.key_rotator, "has_keys", False))) else "anonymous"
+        logger.info(f"OTX threat intelligence tool configured (2 actions, {key_mode})")
         return otx
 
 

@@ -207,13 +207,13 @@ TOOL_REGISTRY = {
     },
     "otx": {
         "purpose": "AlienVault OTX threat intelligence",
-        "when_to_use": "Check IPs/domains against threat feeds, get pulse counts and malware indicators",
+        "when_to_use": "Check IPs/domains against threat feeds, get pulse counts, adversary attribution, malware samples, and historical infrastructure",
         "args_format": '"action": "ip_report|domain_report", "ip": "...", "domain": "..."',
         "description": (
             '**otx** (AlienVault Open Threat Exchange)\n'
-            '   - **action="ip_report"** — Threat pulses, reputation, malware, passive DNS for an IP\n'
-            '   - **action="domain_report"** — Threat pulses, WHOIS, malware indicators for a domain\n'
-            '   - Free API with generous limits'
+            '   - **action="ip_report"** — Threat pulses, adversary attribution, malware samples, reputation, geo for an IP\n'
+            '   - **action="domain_report"** — Threat pulses, adversary, malware samples, WHOIS, historical IPs for a domain\n'
+            '   - Works without API key (reduced rate); key provides private pulses and higher limits'
         ),
     },
     "netlas": {

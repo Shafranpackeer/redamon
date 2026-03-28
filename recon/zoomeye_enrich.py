@@ -58,6 +58,47 @@ def _geoinfo_country(geoinfo) -> str:
     return str(c or "")
 
 
+def _geoinfo_city(geoinfo) -> str:
+    if not geoinfo or not isinstance(geoinfo, dict):
+        return ""
+    city = geoinfo.get("city")
+    if isinstance(city, str):
+        return city
+    if isinstance(city, dict):
+        names = city.get("names") or city.get("name")
+        if isinstance(names, dict):
+            return str(names.get("en") or names.get("zh-cn") or next(iter(names.values()), ""))
+        return str(names or city.get("code") or "")
+    return str(city or "")
+
+
+def _geoinfo_latlon(geoinfo) -> tuple:
+    """Return (latitude, longitude) floats or (None, None)."""
+    if not geoinfo or not isinstance(geoinfo, dict):
+        return None, None
+    loc = geoinfo.get("location")
+    if not isinstance(loc, dict):
+        return None, None
+    try:
+        lat = float(loc.get("lat") or loc.get("latitude") or 0) or None
+        lon = float(loc.get("lng") or loc.get("longitude") or 0) or None
+        return lat, lon
+    except (TypeError, ValueError):
+        return None, None
+
+
+def _geoinfo_asn(geoinfo) -> str:
+    if not geoinfo or not isinstance(geoinfo, dict):
+        return ""
+    return str(geoinfo.get("asn") or "")
+
+
+def _geoinfo_isp(geoinfo) -> str:
+    if not geoinfo or not isinstance(geoinfo, dict):
+        return ""
+    return str(geoinfo.get("isp") or geoinfo.get("organization") or geoinfo.get("aso") or "")
+
+
 def _zoomeye_search(
     query: str,
     api_key: str,
@@ -128,14 +169,36 @@ def _zoomeye_search(
                     port = int(port)
                 except (TypeError, ValueError):
                     port = 0
+            geoinfo = m.get("geoinfo")
+            lat, lon = _geoinfo_latlon(geoinfo)
+            ssl = m.get("ssl") or {}
+            # Prefer root-level hostname/rdns, fall back to portinfo
+            hostname = str(m.get("hostname") or portinfo.get("hostname") or "")
+            rdns = str(m.get("rdns") or portinfo.get("rdns") or "")
             out.append(
                 {
                     "ip": str(m.get("ip") or ""),
                     "port": port,
+                    "protocol": str(portinfo.get("protocol") or "tcp").lower() or "tcp",
                     "app": str(portinfo.get("app") or ""),
+                    "service": str(portinfo.get("service") or ""),
+                    "product": str(portinfo.get("product") or ""),
+                    "version": str(portinfo.get("version") or ""),
+                    "title": str(portinfo.get("title") or ""),
                     "banner": str(portinfo.get("banner") or ""),
                     "os": str(portinfo.get("os") or ""),
-                    "country": _geoinfo_country(m.get("geoinfo")),
+                    "device": str(portinfo.get("device") or ""),
+                    "hostname": hostname,
+                    "rdns": rdns,
+                    "country": _geoinfo_country(geoinfo),
+                    "city": _geoinfo_city(geoinfo),
+                    "latitude": lat,
+                    "longitude": lon,
+                    "asn": _geoinfo_asn(geoinfo),
+                    "isp": _geoinfo_isp(geoinfo),
+                    "update_time": str(m.get("update_time") or ""),
+                    "ssl_jarm": str(ssl.get("jarm") or ""),
+                    "ssl_ja3s": str(ssl.get("ja3s") or ""),
                 }
             )
 
@@ -169,8 +232,7 @@ def run_zoomeye_enrichment(combined_result: dict, settings: dict) -> dict:
     is_ip_mode = combined_result.get("metadata", {}).get("ip_mode", False)
     ips = _extract_ips_from_recon(combined_result)
 
-    print(f"\n[PHASE] ZoomEye OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][ZoomEye] Starting OSINT enrichment")
 
     ze_data: dict = {"results": [], "total": 0}
 
@@ -221,9 +283,9 @@ def run_zoomeye_enrichment(combined_result: dict, settings: dict) -> dict:
 
 
 def run_zoomeye_enrichment_isolated(combined_result: dict, settings: dict) -> dict:
-    """Shallow copy of combined_result, run enrichment, return only the ``zoomeye`` dict."""
+    """Deep copy of combined_result, run enrichment, return only the ``zoomeye`` dict."""
     import copy
 
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_zoomeye_enrichment(snapshot, settings)
     return snapshot.get("zoomeye", {})

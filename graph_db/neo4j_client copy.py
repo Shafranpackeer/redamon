@@ -6730,6 +6730,13 @@ class Neo4jClient:
                                 app_name = pentry.get("app_name")
                                 if app_name:
                                     svc_name = app_name.lower()
+                                    svc_props: dict = {"source": "criminalip", "updated_at": "datetime()"}
+                                    if pentry.get("app_version"):
+                                        svc_props["version"] = pentry["app_version"]
+                                    if pentry.get("banner"):
+                                        svc_props["banner"] = pentry["banner"][:500]
+                                    if pentry.get("protocol"):
+                                        svc_props["name"] = svc_name
                                     session.run(
                                         """
                                         MERGE (svc:Service {name: $svc_name, port_number: $port,

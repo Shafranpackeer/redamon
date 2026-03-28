@@ -88,11 +88,21 @@ def _parse_domain_attrs(data: dict | None) -> dict | None:
     if not data:
         return None
     attrs = (data.get("data") or {}).get("attributes") or {}
+    ranks = attrs.get("popularity_ranks") or {}
     return {
         "reputation": attrs.get("reputation"),
         "analysis_stats": attrs.get("last_analysis_stats") or {},
         "categories": attrs.get("categories") or {},
         "registrar": attrs.get("registrar"),
+        "total_votes": attrs.get("total_votes") or {},
+        "tags": attrs.get("tags") or [],
+        "last_analysis_date": attrs.get("last_analysis_date"),
+        "jarm": attrs.get("jarm"),
+        "popularity_ranks": ranks,
+        "popularity_alexa": (ranks.get("Alexa") or {}).get("rank"),
+        "popularity_umbrella": (ranks.get("Cisco Umbrella") or {}).get("rank"),
+        "last_dns_records_date": attrs.get("last_dns_records_date"),
+        "last_https_certificate_date": attrs.get("last_https_certificate_date"),
     }
 
 
@@ -112,6 +122,13 @@ def _parse_ip_attrs(data: dict | None) -> dict | None:
         "asn": asn,
         "as_owner": attrs.get("as_owner"),
         "country": attrs.get("country"),
+        "total_votes": attrs.get("total_votes") or {},
+        "tags": attrs.get("tags") or [],
+        "last_analysis_date": attrs.get("last_analysis_date"),
+        "network": attrs.get("network"),
+        "regional_internet_registry": attrs.get("regional_internet_registry"),
+        "continent": attrs.get("continent"),
+        "jarm": attrs.get("jarm"),
     }
 
 
@@ -126,10 +143,10 @@ def run_virustotal_enrichment(combined_result: dict, settings: dict) -> dict:
 
     api_key = settings.get("VIRUSTOTAL_API_KEY", "")
     key_rotator = settings.get("VIRUSTOTAL_KEY_ROTATOR")
-    rate_limit = int(settings.get("VIRUSTOTAL_RATE_LIMIT", 4) or 4)
-    max_targets = int(settings.get("VIRUSTOTAL_MAX_TARGETS", 20) or 20)
-    rate_limit = max(1, rate_limit)
-    max_targets = max(0, max_targets)
+    _rl = settings.get("VIRUSTOTAL_RATE_LIMIT", 4)
+    rate_limit = max(1, int(_rl if _rl is not None else 4))
+    _mt = settings.get("VIRUSTOTAL_MAX_TARGETS", 20)
+    max_targets = max(0, int(_mt if _mt is not None else 20))
 
     if not _effective_key(api_key, key_rotator):
         print(f"[!][VirusTotal] No API key configured — skipping")
@@ -140,8 +157,7 @@ def run_virustotal_enrichment(combined_result: dict, settings: dict) -> dict:
     ips = _extract_ips_from_recon(combined_result)
     ip_slice = ips[:max_targets] if max_targets else []
 
-    print(f"\n[PHASE] VirusTotal OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][VirusTotal] Starting OSINT enrichment")
     print(f"[+][VirusTotal] Extracted {len(ips)} unique IPs (enriching up to {max_targets})")
 
     vt_data: dict = {
@@ -167,6 +183,14 @@ def run_virustotal_enrichment(combined_result: dict, settings: dict) -> dict:
                     "analysis_stats": parsed["analysis_stats"],
                     "categories": parsed["categories"],
                     "registrar": parsed["registrar"],
+                    "total_votes": parsed["total_votes"],
+                    "tags": parsed["tags"],
+                    "last_analysis_date": parsed["last_analysis_date"],
+                    "jarm": parsed["jarm"],
+                    "popularity_alexa": parsed["popularity_alexa"],
+                    "popularity_umbrella": parsed["popularity_umbrella"],
+                    "last_dns_records_date": parsed["last_dns_records_date"],
+                    "last_https_certificate_date": parsed["last_https_certificate_date"],
                 }
                 print(f"[+][VirusTotal] Domain report retrieved for {domain}")
             else:
@@ -190,6 +214,13 @@ def run_virustotal_enrichment(combined_result: dict, settings: dict) -> dict:
                     "asn": parsed["asn"],
                     "as_owner": parsed["as_owner"],
                     "country": parsed["country"],
+                    "total_votes": parsed["total_votes"],
+                    "tags": parsed["tags"],
+                    "last_analysis_date": parsed["last_analysis_date"],
+                    "network": parsed["network"],
+                    "regional_internet_registry": parsed["regional_internet_registry"],
+                    "continent": parsed["continent"],
+                    "jarm": parsed["jarm"],
                 }
             )
             print(f"[+][VirusTotal] IP report retrieved for {ip}")
@@ -209,9 +240,9 @@ def run_virustotal_enrichment(combined_result: dict, settings: dict) -> dict:
 
 
 def run_virustotal_enrichment_isolated(combined_result: dict, settings: dict) -> dict:
-    """Shallow copy of combined_result, run enrichment, return only the ``virustotal`` dict."""
+    """Deep copy of combined_result, run enrichment, return only the ``virustotal`` dict."""
     import copy
 
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_virustotal_enrichment(snapshot, settings)
     return snapshot.get("virustotal", {})

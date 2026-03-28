@@ -476,10 +476,12 @@ model Project {
   // OSINT & Threat Intelligence Pipeline Enrichment
   censysEnabled                         Boolean  @default(false)  @map("censys_enabled_recon")
   fofaEnabled                           Boolean  @default(false)  @map("fofa_enabled")
+  fofaMaxResults                        Int      @default(1000)   @map("fofa_max_results")
   otxEnabled                            Boolean  @default(true)   @map("otx_enabled")
   netlasEnabled                         Boolean  @default(false)  @map("netlas_enabled")
   virusTotalEnabled                     Boolean  @default(true)   @map("virustotal_enabled")
   zoomEyeEnabled                        Boolean  @default(false)  @map("zoomeye_enabled")
+  zoomEyeMaxResults                     Int      @default(1000)   @map("zoomeye_max_results")
   criminalIpEnabled                     Boolean  @default(false)  @map("criminalip_enabled")
 
   // Subdomain Discovery Tool Toggles

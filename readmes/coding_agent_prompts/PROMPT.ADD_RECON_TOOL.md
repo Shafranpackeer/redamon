@@ -63,7 +63,11 @@ Integrate **[TOOL_NAME]** into the RedAmon recon pipeline.
 
 ### Phase 2: Implementation checklist
 
-- [ ] Tool runner function in the appropriate `recon/*.py` file
+- [ ] Tool runner function in the appropriate `recon/*.py` file following the **enrichment module contract**:
+  - Main function `run_X_enrichment(combined_result: dict, settings: dict) -> dict` — mutates `combined_result` in place by writing to `combined_result["toolname"]` and returns it
+  - The top-level key **must match** the tool identifier used everywhere else in the pipeline (e.g. `combined_result["virustotal"]`, `combined_result["censys"]`) — never abbreviate or vary the name
+  - Isolated wrapper `run_X_enrichment_isolated(combined_result: dict, settings: dict) -> dict` — shallow-copies `combined_result`, calls the main runner on the copy, returns only the tool's payload dict (e.g. `snapshot.get("toolname", {})`). This is the **actual call path** used by GROUP 3b fan-out in `recon/main.py` and by all unit tests — it must be present
+  - If the tool uses API keys: follow the `_effective_key(api_key, key_rotator)` pattern. Copy this helper verbatim from an existing module (e.g. `censys_enrich.py`). Add a `TOOL_KEY_ROTATOR` settings key alongside `TOOL_API_KEY` so key rotation is supported from day one
 - [ ] Settings keys in `recon/project_settings.py` (`DEFAULT_SETTINGS` + `fetch_project_settings()` mapping)
 - [ ] Prisma schema fields in `webapp/prisma/schema.prisma`
 - [ ] Run `docker compose exec webapp npx prisma db push` (never use `prisma migrate`)
@@ -76,10 +80,11 @@ Integrate **[TOOL_NAME]** into the RedAmon recon pipeline.
 - [ ] `SECTION_INPUT_MAP` and `SECTION_NODE_MAP` updated in `nodeMapping.ts` (if new section)
 - [ ] `/defaults` endpoint updated in `recon_orchestrator/api.py`
 - [ ] Graph DB: update or extend the appropriate `update_graph_from_*()` method in `graph_db/neo4j_client.py`
+- [ ] **Graph completeness**: Cross-check every field stored in the enrichment output dict (`combined_result["toolname"]`) against the `update_graph_from_*()` method — every collected field must be written to a node property or relationship. Silently dropping a field (collecting it in the enrichment module but never reading it in the graph method) is a data loss bug. If a field doesn't fit any existing node, either map it to the closest existing property or document explicitly why it is intentionally omitted.
 - [ ] **Graph node reuse**: Before creating new node labels, check if the tool's output can be mapped to **existing** node types in `readmes/GRAPH.SCHEMA.md`. For example, discovered hostnames should go into `Subdomain`, not a new label. Only introduce new node labels if the data genuinely doesn't fit any existing type.
-- [ ] If the tool introduces **new node labels, relationship types, or node properties** to the graph, update **ALL** of these:
+- [ ] **Schema sync (mandatory for every tool)**: If the tool writes **any** data to Neo4j — new node labels, new relationships, or new properties on existing nodes — update **ALL** of these. This applies even when adding properties to existing node types (e.g., new enrichment flags on `IP`, new fields on `Service`):
   1. `readmes/GRAPH.SCHEMA.md` — the canonical schema reference
-  2. `agentic/prompts/base.py` — the `TEXT_TO_CYPHER_SYSTEM` prompt (LLM-facing schema for natural-language-to-Cypher). Missing this will cause the agent to generate incorrect queries or fail to expose new data.
+  2. `agentic/prompts/base.py` — the `TEXT_TO_CYPHER_SYSTEM` prompt (LLM-facing schema for natural-language-to-Cypher). Missing this will cause the AI agent to generate incorrect Cypher or fail to expose the new data in queries.
   3. `webapp/src/app/graph/config/colors.ts` — add entry to `NODE_COLORS` dict with an appropriate color for the new node type (read existing color families as reference)
   4. `webapp/src/app/graph/config/colors.ts` — add entry to `NODE_SIZES` if the new node type needs a non-default size
   5. `webapp/src/app/graph/components/DataTable/DataTableToolbar.tsx` — add the new node type to the type filter dropdown so users can filter by it

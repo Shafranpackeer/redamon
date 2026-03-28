@@ -18,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 FOFA_API_URL = "https://fofa.info/api/v1/search/all"
 
-FOFA_FIELDS = "ip,port,host,title,server,protocol,country,city,as_organization"
+FOFA_FIELDS = (
+    "ip,port,host,domain,title,server,protocol,country,country_name,region,city,"
+    "isp,as_number,as_organization,os,product,version,jarm,tls_version,"
+    "certs_subject_cn,certs_subject_org,certs_issuer_cn,certs_valid,"
+    "icon_hash,cname,fid,lastupdatetime"
+)
 
 
 def _extract_ips_from_recon(combined_result: dict) -> list[str]:
@@ -51,6 +56,22 @@ def _fofa_effective_key(settings: dict, key_rotator) -> str:
     return api_key
 
 
+def _fofa_auth_params(api_key: str) -> dict:
+    """
+    Return FOFA auth params from a raw API key string.
+
+    FOFA supports two formats:
+      - Legacy: "email:apikey"  → separate email + key params
+      - Modern: "apikey"        → key param only (FOFA API key-only auth)
+
+    Both are handled transparently so users can enter either format.
+    """
+    if ":" in api_key:
+        email, _, key = api_key.partition(":")
+        return {"email": email.strip(), "key": key.strip()}
+    return {"key": api_key.strip()}
+
+
 def _fofa_search(
     query: str,
     api_key: str,
@@ -60,7 +81,7 @@ def _fofa_search(
     """Run FOFA search/all. Returns API JSON dict or None on hard failure / 429."""
     q_b64 = base64.b64encode(query.encode("utf-8")).decode("ascii")
     params = {
-        "key": api_key,
+        **_fofa_auth_params(api_key),
         "qbase64": q_b64,
         "fields": FOFA_FIELDS,
         "size": size,
@@ -86,26 +107,37 @@ def _fofa_search(
         return None
 
 
+_FOFA_FIELD_NAMES = [
+    "ip", "port", "host", "domain", "title", "server", "protocol",
+    "country", "country_name", "region", "city",
+    "isp", "as_number", "as_organization", "os",
+    "product", "version", "jarm", "tls_version",
+    "certs_subject_cn", "certs_subject_org", "certs_issuer_cn", "certs_valid",
+    "icon_hash", "cname", "fid", "lastupdatetime",
+]
+
+_FOFA_STR_FIELDS = [f for f in _FOFA_FIELD_NAMES if f != "port"]
+
+
 def _parse_fofa_rows(data: dict) -> tuple[list[dict], int]:
     """Parse FOFA results array-of-arrays into dict rows. Returns (rows, total)."""
     raw = data.get("results") or []
     total = data.get("size")
     if total is None:
         total = len(raw)
-    field_names = ["ip", "port", "host", "title", "server", "protocol", "country", "city", "as_org"]
     rows = []
     for row in raw:
         if not isinstance(row, (list, tuple)):
             continue
         d = {}
-        for i, name in enumerate(field_names):
+        for i, name in enumerate(_FOFA_FIELD_NAMES):
             d[name] = row[i] if i < len(row) else ""
         port_val = d.get("port")
         try:
             d["port"] = int(port_val) if port_val not in (None, "", []) else 0
         except (TypeError, ValueError):
             d["port"] = 0
-        for k in ("ip", "host", "title", "server", "protocol", "country", "city", "as_org"):
+        for k in _FOFA_STR_FIELDS:
             if d.get(k) is None:
                 d[k] = ""
             else:
@@ -143,8 +175,7 @@ def run_fofa_enrichment(combined_result: dict, settings: dict[str, Any]) -> dict
     is_ip_mode = combined_result.get("metadata", {}).get("ip_mode", False)
     ips = _extract_ips_from_recon(combined_result)
 
-    print(f"\n[PHASE] FOFA OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][FOFA] Starting OSINT enrichment")
 
     fofa_data: dict[str, Any] = {"results": [], "total": 0}
     aggregated: list[dict] = []
@@ -207,6 +238,6 @@ def run_fofa_enrichment_isolated(combined_result: dict, settings: dict[str, Any]
         The 'fofa' data dictionary
     """
     import copy
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_fofa_enrichment(snapshot, settings)
     return snapshot.get("fofa", {})

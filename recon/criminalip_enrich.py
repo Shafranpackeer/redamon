@@ -90,13 +90,37 @@ def _cip_get(
 
 
 def _parse_ip_report(ip: str, body: dict | None) -> dict | None:
+    """
+    Parse /v1/ip/data response (with full=true).
+
+    Real API structure:
+      {
+        "tags": {"is_vpn": bool, "is_cloud": bool, "is_tor": bool,
+                 "is_proxy": bool, "is_hosting": bool, "is_mobile": bool,
+                 "is_darkweb": bool, "is_scanner": bool, "is_snort": bool},
+        "score": {"inbound": int, "outbound": int},
+        "whois": {"count": N, "data": [{"org_name": str, "org_country_code": str,
+                                         "city": str, "latitude": float, "longitude": float,
+                                         "as_name": str, "as_no": int}]},
+        "port": {"count": N, "data": [{"open_port_no": int, "app_name": str,
+                                        "app_version": str, "banner": str,
+                                        "socket": str, "protocol": str}]},
+        "vulnerability": {"count": N, "data": [{"cve_id": str, "cvssv3_score": float, ...}]},
+        "ip_category": {"count": N, "data": [{"type": str, "detect_source": str}]},
+        "ids": {"count": N, ...},
+        "scanning_record": {"count": N, ...}
+      }
+    """
     if not body:
         return None
     data = body.get("data")
     if data is None:
         data = body
+    if not isinstance(data, dict):
+        return None
 
-    score_raw = (data.get("score") if isinstance(data, dict) else None) or {}
+    # --- Score ---
+    score_raw = data.get("score") or {}
     if not isinstance(score_raw, dict):
         score_raw = {}
     score = {
@@ -104,39 +128,117 @@ def _parse_ip_report(ip: str, body: dict | None) -> dict | None:
         "outbound": str(score_raw.get("outbound", "") or score_raw.get("outbound_score", "") or ""),
     }
 
-    issues_raw = (data.get("issues") if isinstance(data, dict) else None) or {}
-    if not isinstance(issues_raw, dict):
-        issues_raw = {}
+    # --- Tags/flags: real API uses "tags", older/mock format may use "issues" ---
+    tags_raw = data.get("tags") or data.get("issues") or {}
+    if not isinstance(tags_raw, dict):
+        tags_raw = {}
     issues = {
-        "is_vpn": issues_raw.get("is_vpn"),
-        "is_proxy": issues_raw.get("is_proxy"),
-        "is_tor": issues_raw.get("is_tor"),
-        "is_hosting": issues_raw.get("is_hosting"),
-        "is_cloud": issues_raw.get("is_cloud"),
+        "is_vpn":     tags_raw.get("is_vpn"),
+        "is_proxy":   tags_raw.get("is_proxy"),
+        "is_tor":     tags_raw.get("is_tor"),
+        "is_hosting": tags_raw.get("is_hosting"),
+        "is_cloud":   tags_raw.get("is_cloud"),
+        "is_mobile":  tags_raw.get("is_mobile"),
+        "is_darkweb": tags_raw.get("is_darkweb"),
+        "is_scanner": tags_raw.get("is_scanner"),
+        "is_snort":   tags_raw.get("is_snort"),
     }
 
-    whois_raw = (data.get("whois") if isinstance(data, dict) else None) or {}
-    if not isinstance(whois_raw, dict):
-        whois_raw = {}
+    # --- Whois: real API wraps in {"count": N, "data": [...]} ---
+    whois_container = data.get("whois") or {}
+    if isinstance(whois_container, dict) and "data" in whois_container:
+        whois_list = whois_container.get("data") or []
+        whois_raw = whois_list[0] if whois_list else {}
+    else:
+        whois_raw = whois_container if isinstance(whois_container, dict) else {}
     whois = {
-        "org_name": whois_raw.get("org_name") or whois_raw.get("organization"),
-        "country": whois_raw.get("country") or whois_raw.get("country_code"),
+        "org_name":    whois_raw.get("org_name") or whois_raw.get("organization"),
+        "country":     whois_raw.get("org_country_code") or whois_raw.get("country") or whois_raw.get("country_code"),
+        "city":        whois_raw.get("city"),
+        "latitude":    whois_raw.get("latitude"),
+        "longitude":   whois_raw.get("longitude"),
+        "postal_code": whois_raw.get("postal_code"),
+        "asn_name":    whois_raw.get("as_name"),
+        "asn_no":      whois_raw.get("as_no"),
     }
 
+    # --- Ports: real API wraps in {"count": N, "data": [...]} ---
+    port_container = data.get("port") or data.get("ports") or {}
+    if isinstance(port_container, dict) and "data" in port_container:
+        ports_raw = port_container.get("data") or []
+    elif isinstance(port_container, list):
+        ports_raw = port_container
+    else:
+        ports_raw = []
     ports = []
-    if isinstance(data, dict):
-        pl = data.get("port") or data.get("ports") or data.get("open_port_list")
-        if isinstance(pl, list):
-            ports = pl
-        elif pl is not None:
-            ports = [pl]
+    for entry in ports_raw:
+        if isinstance(entry, dict):
+            ports.append({
+                "port":        entry.get("open_port_no") or entry.get("port"),
+                "socket":      entry.get("socket") or entry.get("socket_type") or "tcp",
+                "protocol":    entry.get("protocol"),
+                "app_name":    entry.get("app_name"),
+                "app_version": entry.get("app_version"),
+                "banner":      entry.get("banner"),
+            })
+        else:
+            try:
+                ports.append({"port": int(entry), "socket": "tcp", "protocol": None,
+                               "app_name": None, "app_version": None, "banner": None})
+            except (TypeError, ValueError):
+                continue
+
+    # --- Vulnerabilities (CVE data, requires full=true param) ---
+    vuln_container = data.get("vulnerability") or {}
+    if isinstance(vuln_container, dict) and "data" in vuln_container:
+        vulns_raw = vuln_container.get("data") or []
+    elif isinstance(vuln_container, list):
+        vulns_raw = vuln_container
+    else:
+        vulns_raw = []
+    vulnerabilities = []
+    for v in vulns_raw:
+        if not isinstance(v, dict):
+            continue
+        cve_id = v.get("cve_id")
+        if not cve_id:
+            continue
+        vulnerabilities.append({
+            "cve_id":       cve_id,
+            "description":  v.get("cve_description"),
+            "cvssv2_score": v.get("cvssv2_score"),
+            "cvssv3_score": v.get("cvssv3_score"),
+            "app_name":     v.get("app_name"),
+            "app_version":  v.get("app_version"),
+        })
+
+    # --- IP categories (threat classification labels) ---
+    cat_container = data.get("ip_category") or {}
+    if isinstance(cat_container, dict) and "data" in cat_container:
+        cats_raw = cat_container.get("data") or []
+    elif isinstance(cat_container, list):
+        cats_raw = cat_container
+    else:
+        cats_raw = []
+    categories = [c.get("type") for c in cats_raw if isinstance(c, dict) and c.get("type")]
+
+    # --- IDS alert count and scanning record count ---
+    ids_container = data.get("ids") or {}
+    ids_count = ids_container.get("count", 0) if isinstance(ids_container, dict) else 0
+
+    scan_container = data.get("scanning_record") or {}
+    scanning_count = scan_container.get("count", 0) if isinstance(scan_container, dict) else 0
 
     return {
-        "ip": ip,
-        "score": score,
-        "issues": issues,
-        "whois": whois,
-        "ports": ports,
+        "ip":              ip,
+        "score":           score,
+        "issues":          issues,
+        "whois":           whois,
+        "ports":           ports,
+        "vulnerabilities": vulnerabilities,
+        "categories":      categories,
+        "ids_count":       ids_count,
+        "scanning_count":  scanning_count,
     }
 
 
@@ -185,8 +287,7 @@ def run_criminalip_enrichment(combined_result: dict, settings: dict) -> dict:
     is_ip_mode = combined_result.get("metadata", {}).get("ip_mode", False)
     ips = _extract_ips_from_recon(combined_result)
 
-    print(f"\n[PHASE] Criminal IP OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][CriminalIP] Starting OSINT enrichment")
     print(f"[+][CriminalIP] Extracted {len(ips)} unique IPs for enrichment")
 
     cip_data: dict = {
@@ -216,11 +317,15 @@ def run_criminalip_enrichment(combined_result: dict, settings: dict) -> dict:
                 time.sleep(1)
             need_sleep = True
             print(f"[*][CriminalIP] Fetching IP data for {ip}...")
-            raw = _cip_get("ip/data", api_key, key_rotator, params={"ip": ip})
+            raw = _cip_get("ip/data", api_key, key_rotator, params={"ip": ip, "full": "true"})
             report = _parse_ip_report(ip, raw)
             if report:
                 cip_data["ip_reports"].append(report)
-                print(f"[+][CriminalIP] IP data retrieved for {ip}")
+                vuln_count = len(report.get("vulnerabilities") or [])
+                print(
+                    f"[+][CriminalIP] IP data retrieved for {ip} "
+                    f"(ports={len(report['ports'])}, vulns={vuln_count})"
+                )
             else:
                 logger.warning(f"CriminalIP: no data for {ip}")
 
@@ -239,9 +344,9 @@ def run_criminalip_enrichment(combined_result: dict, settings: dict) -> dict:
 
 
 def run_criminalip_enrichment_isolated(combined_result: dict, settings: dict) -> dict:
-    """Shallow copy of combined_result, run enrichment, return only the ``criminalip`` dict."""
+    """Deep copy of combined_result, run enrichment, return only the ``criminalip`` dict."""
     import copy
 
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_criminalip_enrichment(snapshot, settings)
     return snapshot.get("criminalip", {})

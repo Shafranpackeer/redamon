@@ -76,16 +76,30 @@ def _netlas_responses_get(
 
 
 def _netlas_item_to_result(data: dict) -> dict | None:
-    """Map one responses item's data blob to output row (certificate used for context)."""
+    """Map one responses item's data blob to output row."""
     if not isinstance(data, dict):
         return None
     http = data.get("http") or {}
     if not isinstance(http, dict):
         http = {}
     title = http.get("title") or ""
+    http_status_code = http.get("status_code")
+
     geo = data.get("geo") or {}
     if not isinstance(geo, dict):
         geo = {}
+    country = str(geo.get("country") or "")
+    city = str(geo.get("city") or "")
+    latitude = geo.get("latitude")
+    longitude = geo.get("longitude")
+    timezone = str(geo.get("time_zone") or "")
+
+    geo_asn = geo.get("asn") or {}
+    if not isinstance(geo_asn, dict):
+        geo_asn = {}
+    asn_number = str(geo_asn.get("number") or "")   # e.g. "AS14618"
+    asn_route = str(geo_asn.get("route") or "")      # e.g. "44.224.0.0/11"
+
     whois = data.get("whois") or {}
     if not isinstance(whois, dict):
         whois = {}
@@ -93,6 +107,32 @@ def _netlas_item_to_result(data: dict) -> dict | None:
     if not isinstance(asn_block, dict):
         asn_block = {}
     asn_name = asn_block.get("name") or ""
+
+    # Protocol-specific service banners
+    banner = ""
+    for bk in ("ssh", "ftp", "smtp", "imap", "pop3", "telnet", "rdp"):
+        proto_block = data.get(bk) or {}
+        if isinstance(proto_block, dict) and proto_block.get("banner"):
+            banner = str(proto_block["banner"])
+            break
+
+    # CVE/vulnerability data (passive NVD-based detection)
+    cve_raw = data.get("cve") or []
+    cve_list: list[dict] = []
+    if isinstance(cve_raw, list):
+        for cve_item in cve_raw:
+            if not isinstance(cve_item, dict):
+                continue
+            cve_id = cve_item.get("name") or cve_item.get("id") or ""
+            if not cve_id:
+                continue
+            cve_list.append({
+                "id": str(cve_id),
+                "base_score": cve_item.get("base_score"),
+                "severity": str(cve_item.get("severity") or "").lower(),
+                "has_exploit": bool(cve_item.get("has_exploit", False)),
+            })
+
     host = data.get("host") or ""
     ip = data.get("ip") or ""
     port = data.get("port")
@@ -108,9 +148,18 @@ def _netlas_item_to_result(data: dict) -> dict | None:
         "port": port_i,
         "protocol": str(protocol) if protocol is not None else "",
         "title": str(title) if title is not None else "",
-        "country": str(geo.get("country") or ""),
+        "http_status_code": http_status_code,
+        "country": country,
+        "city": city,
+        "latitude": latitude,
+        "longitude": longitude,
+        "timezone": timezone,
         "isp": str(data.get("isp") or ""),
         "asn_name": str(asn_name),
+        "asn_number": asn_number,
+        "asn_route": asn_route,
+        "banner": banner,
+        "cve_list": cve_list,
     }
 
 
@@ -162,8 +211,7 @@ def run_netlas_enrichment(combined_result: dict, settings: dict[str, Any]) -> di
     is_ip_mode = combined_result.get("metadata", {}).get("ip_mode", False)
     ips = _extract_ips_from_recon(combined_result)
 
-    print(f"\n[PHASE] Netlas OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][Netlas] Starting OSINT enrichment")
 
     netlas_data: dict[str, Any] = {"results": [], "total": 0}
     all_rows: list[dict] = []
@@ -225,6 +273,6 @@ def run_netlas_enrichment_isolated(combined_result: dict, settings: dict[str, An
         The 'netlas' data dictionary
     """
     import copy
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_netlas_enrichment(snapshot, settings)
     return snapshot.get("netlas", {})

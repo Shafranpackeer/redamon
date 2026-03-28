@@ -103,24 +103,108 @@ def _censys_get_host(ip: str, api_id: str, api_secret: str) -> tuple[dict | None
         return None, False
 
 
+def _censys_extract_tls(svc: dict) -> dict | None:
+    """Extract TLS certificate data from a service object."""
+    tls = svc.get("tls")
+    if not isinstance(tls, dict):
+        return None
+    certs = tls.get("certificates") or {}
+    if not isinstance(certs, dict):
+        return None
+    leaf = certs.get("leaf_data") or {}
+    if not isinstance(leaf, dict):
+        return None
+
+    subject = leaf.get("subject") or {}
+    issuer = leaf.get("issuer") or {}
+    subject_cn = (
+        subject.get("common_name")
+        if isinstance(subject, dict)
+        else None
+    )
+    if not subject_cn:
+        return None
+
+    issuer_cn = issuer.get("common_name") if isinstance(issuer, dict) else ""
+    issuer_org = issuer.get("organization") if isinstance(issuer, dict) else ""
+    if isinstance(issuer_org, list):
+        issuer_org = issuer_org[0] if issuer_org else ""
+    issuer_str = f"{issuer_cn} ({issuer_org})" if issuer_org else issuer_cn or ""
+
+    names = leaf.get("names") or []
+    if not isinstance(names, list):
+        names = []
+
+    validity = leaf.get("validity") or {}
+    fingerprint = leaf.get("fingerprint") or ""
+
+    return {
+        "subject_cn": subject_cn,
+        "issuer": issuer_str,
+        "san": [n for n in names if n != subject_cn],
+        "not_before": validity.get("start") if isinstance(validity, dict) else None,
+        "not_after": validity.get("end") if isinstance(validity, dict) else None,
+        "fingerprint": fingerprint,
+        "tls_version": tls.get("version_selected") or "",
+        "cipher": tls.get("cipher_selected") or "",
+    }
+
+
+def _censys_extract_http(svc: dict) -> dict | None:
+    """Extract HTTP response metadata from a service object."""
+    http = svc.get("http")
+    if not isinstance(http, dict):
+        return None
+    resp = http.get("response") or {}
+    if not isinstance(resp, dict):
+        return None
+    title = resp.get("html_title") or ""
+    status_code = resp.get("status_code")
+    if not title and not status_code:
+        return None
+    return {
+        "title": title,
+        "status_code": status_code,
+    }
+
+
 def _build_censys_host_entry(ip: str, result: dict) -> dict:
     services_out = []
     for svc in result.get("services") or []:
         if not isinstance(svc, dict):
             continue
-        services_out.append({
+        labels = svc.get("labels") or []
+        if not isinstance(labels, list):
+            labels = []
+        entry = {
             "port": svc.get("port"),
             "transport_protocol": svc.get("transport_protocol") or svc.get("transport") or "",
             "service_name": svc.get("service_name") or svc.get("name") or "",
+            "extended_service_name": svc.get("extended_service_name") or "",
+            "banner": (svc.get("banner") or "")[:500],
+            "labels": labels,
             "software": _censys_normalize_software(svc),
-        })
+        }
+        tls = _censys_extract_tls(svc)
+        if tls:
+            entry["tls"] = tls
+        http = _censys_extract_http(svc)
+        if http:
+            entry["http"] = http
+        services_out.append(entry)
 
     loc = result.get("location") or {}
     if not isinstance(loc, dict):
         loc = {}
+    coords = loc.get("coordinates") or {}
     location = {
-        "country": loc.get("country") or loc.get("country_code") or "",
+        "country": loc.get("country") or "",
+        "country_code": loc.get("country_code") or "",
         "city": loc.get("city") or "",
+        "timezone": loc.get("timezone") or "",
+        "registered_country": loc.get("registered_country") or "",
+        "latitude": coords.get("latitude") if isinstance(coords, dict) else None,
+        "longitude": coords.get("longitude") if isinstance(coords, dict) else None,
     }
 
     asn = result.get("autonomous_system") or {}
@@ -129,7 +213,22 @@ def _build_censys_host_entry(ip: str, result: dict) -> dict:
     autonomous_system = {
         "asn": asn.get("asn"),
         "name": asn.get("name") or "",
+        "bgp_prefix": asn.get("bgp_prefix") or "",
+        "country_code": asn.get("country_code") or "",
+        "description": asn.get("description") or "",
+        "rir": asn.get("rir") or "",
     }
+
+    # Reverse DNS hostnames from the top-level dns field
+    dns_field = result.get("dns")
+    if isinstance(dns_field, dict):
+        rdns = dns_field.get("reverse_dns")
+        if isinstance(rdns, dict):
+            reverse_dns_names = [h for h in (rdns.get("names") or []) if isinstance(h, str) and h]
+        else:
+            reverse_dns_names = []
+    else:
+        reverse_dns_names = []
 
     last_updated = (
         result.get("last_updated_at")
@@ -144,6 +243,7 @@ def _build_censys_host_entry(ip: str, result: dict) -> dict:
         "autonomous_system": autonomous_system,
         "os": _censys_os_to_str(result.get("operating_system")),
         "last_updated": str(last_updated) if last_updated is not None else "",
+        "reverse_dns_names": reverse_dns_names,
     }
 
 
@@ -170,8 +270,7 @@ def run_censys_enrichment(combined_result: dict, settings: dict[str, Any]) -> di
         print("[!][Censys] CENSYS_API_ID / CENSYS_API_SECRET not configured — skipping")
         return combined_result
 
-    print(f"\n[PHASE] Censys OSINT Enrichment")
-    print("-" * 40)
+    print(f"[*][Censys] Starting OSINT enrichment")
 
     ips = _extract_ips_from_recon(combined_result)
     print(f"[+][Censys] Extracted {len(ips)} unique IPs for enrichment")
@@ -219,6 +318,6 @@ def run_censys_enrichment_isolated(combined_result: dict, settings: dict[str, An
         The 'censys' data dictionary (just the enrichment payload)
     """
     import copy
-    snapshot = copy.copy(combined_result)
+    snapshot = copy.deepcopy(combined_result)
     run_censys_enrichment(snapshot, settings)
     return snapshot.get("censys", {})
