@@ -2,7 +2,12 @@
 
 import unittest
 
-from state import _group_trace_by_iteration, format_chain_context
+from state import (
+    _group_trace_by_iteration,
+    _dedup_findings,
+    _severity_rank,
+    format_chain_context,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -27,13 +32,23 @@ def _tool(iteration, tool_name, *, phase="informational", success=True,
     }
 
 
-def _finding(title, severity="info", step=1, finding_type="custom"):
-    return {
+def _finding(title, severity="info", step=1, finding_type="custom",
+             evidence="", confidence=None, related_cves=None, related_ips=None):
+    d = {
         "finding_type": finding_type,
         "severity": severity,
         "title": title,
         "step_iteration": step,
     }
+    if evidence:
+        d["evidence"] = evidence
+    if confidence is not None:
+        d["confidence"] = confidence
+    if related_cves:
+        d["related_cves"] = related_cves
+    if related_ips:
+        d["related_ips"] = related_ips
+    return d
 
 
 def _failure(step, error, lesson="", failure_type="tool_error"):
@@ -351,17 +366,22 @@ class TestFormatHeader(unittest.TestCase):
 class TestFormatRecentLimit(unittest.TestCase):
 
     def test_default_limit_is_20(self):
-        """With 25 iterations, only last 20 should appear."""
+        """With 25 iterations, last 20 in recent detail, first 5 in summary tier."""
         trace = []
         for i in range(1, 26):
             trace.append(_tool(i, "execute_curl", analysis=f"analysis_iter_{i}_end"))
         result = format_chain_context([], [], [], trace)
-        # First 5 iterations should be missing (use unique suffixes to avoid substring matches)
-        self.assertNotIn("analysis_iter_1_end", result)
-        self.assertNotIn("analysis_iter_5_end", result)
-        # Last iterations should be present
+        # First 5 iterations should appear in summary tier (not in recent steps detail)
+        self.assertIn("Earlier Steps", result)
+        self.assertIn("analysis_iter_1_end", result)
+        self.assertIn("analysis_iter_5_end", result)
+        # They should be in summary format (one-liner), not detailed format
+        self.assertNotIn("Step 1 [informational]", result)
+        self.assertNotIn("Step 5 [informational]", result)
+        # Last iterations should be present in recent detail
         self.assertIn("analysis_iter_25_end", result)
-        self.assertIn("analysis_iter_6_end", result)
+        self.assertIn("Step 6 [informational]", result)
+        self.assertIn("Step 25 [informational]", result)
 
     def test_wave_counts_as_one_iteration(self):
         """A wave of 5 tools = 1 iteration, not 5."""
@@ -572,7 +592,259 @@ class TestEdgeCases(unittest.TestCase):
         result = format_chain_context([], [], [], trace)
         tool_lines = [l for l in result.split("\n") if "- execute_curl:" in l]
         for line in tool_lines:
-            self.assertLessEqual(len(line), 250)  # 200 + prefix
+            self.assertLessEqual(len(line), 350)  # 300 + prefix
+
+
+# ===================================================================
+# _severity_rank and _dedup_findings
+# ===================================================================
+
+class TestSeverityRank(unittest.TestCase):
+
+    def test_ordering(self):
+        self.assertLess(_severity_rank("critical"), _severity_rank("high"))
+        self.assertLess(_severity_rank("high"), _severity_rank("medium"))
+        self.assertLess(_severity_rank("medium"), _severity_rank("low"))
+        self.assertLess(_severity_rank("low"), _severity_rank("info"))
+
+    def test_case_insensitive(self):
+        self.assertEqual(_severity_rank("CRITICAL"), _severity_rank("critical"))
+        self.assertEqual(_severity_rank("High"), _severity_rank("high"))
+
+    def test_none_defaults_to_info(self):
+        self.assertEqual(_severity_rank(None), _severity_rank("info"))
+
+    def test_unknown_defaults_to_info(self):
+        self.assertEqual(_severity_rank("banana"), _severity_rank("info"))
+
+
+class TestDedupFindings(unittest.TestCase):
+
+    def test_no_duplicates_unchanged(self):
+        findings = [
+            _finding("Finding A", severity="high"),
+            _finding("Finding B", severity="info"),
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 2)
+
+    def test_exact_duplicate_removed(self):
+        findings = [
+            _finding("Password hash leaked", severity="high", step=5),
+            _finding("Password hash leaked", severity="high", step=7),
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["step_iteration"], 5)  # keeps earliest
+
+    def test_case_insensitive_dedup(self):
+        findings = [
+            _finding("SQL Injection Found", severity="high"),
+            _finding("sql injection found", severity="medium"),
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 1)
+
+    def test_severity_upgraded_from_later_duplicate(self):
+        findings = [
+            _finding("Vuln found", severity="medium", step=1),
+            _finding("Vuln found", severity="high", step=5),
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["severity"], "high")  # upgraded
+        self.assertEqual(result[0]["step_iteration"], 1)  # still earliest
+
+    def test_confidence_upgraded_from_later_duplicate(self):
+        findings = [
+            _finding("Vuln found", confidence=60, step=1),
+            _finding("Vuln found", confidence=90, step=5),
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["confidence"], 90)  # upgraded
+
+    def test_empty_title_uses_finding_type(self):
+        findings = [
+            {"finding_type": "vulnerability_confirmed", "severity": "high", "step_iteration": 1},
+            {"finding_type": "vulnerability_confirmed", "severity": "high", "step_iteration": 3},
+        ]
+        result = _dedup_findings(findings)
+        self.assertEqual(len(result), 1)  # deduped by finding_type fallback
+
+
+# ===================================================================
+# format_chain_context — enriched findings
+# ===================================================================
+
+class TestEnrichedFindings(unittest.TestCase):
+
+    def test_severity_sorting(self):
+        findings = [
+            _finding("Info thing", severity="info", step=1),
+            _finding("Critical vuln", severity="critical", step=3),
+            _finding("Medium issue", severity="medium", step=2),
+        ]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        # Critical should appear before medium, medium before info
+        crit_pos = result.index("Critical vuln")
+        med_pos = result.index("Medium issue")
+        info_pos = result.index("Info thing")
+        self.assertLess(crit_pos, med_pos)
+        self.assertLess(med_pos, info_pos)
+
+    def test_confidence_shown(self):
+        findings = [_finding("Test finding", confidence=95, step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("95%", result)
+
+    def test_confidence_zero_shown(self):
+        findings = [_finding("Test finding", confidence=0, step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("0%", result)
+
+    def test_confidence_none_not_shown(self):
+        findings = [_finding("Test finding", step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertNotIn("%", result)
+
+    def test_evidence_shown(self):
+        findings = [_finding("SQLi found", evidence="Parameter id is injectable", step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("Evidence: Parameter id is injectable", result)
+
+    def test_evidence_truncated(self):
+        findings = [_finding("SQLi found", evidence="X" * 200, step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        evidence_line = [l for l in result.split("\n") if "Evidence:" in l][0]
+        # Should be truncated to 150 + prefix
+        self.assertLessEqual(len(evidence_line.strip()) - len("Evidence: "), 150)
+
+    def test_empty_evidence_not_shown(self):
+        findings = [_finding("Test", evidence="", step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertNotIn("Evidence:", result)
+
+    def test_cves_shown(self):
+        findings = [_finding("RCE", related_cves=["CVE-2021-41773", "CVE-2023-1234"], step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("CVEs: CVE-2021-41773, CVE-2023-1234", result)
+
+    def test_ips_shown(self):
+        findings = [_finding("Service found", related_ips=["10.10.10.5"], step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("IPs: 10.10.10.5", result)
+
+    def test_cves_and_ips_combined(self):
+        findings = [_finding("RCE", related_cves=["CVE-2021-41773"],
+                             related_ips=["10.10.10.5"], step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertIn("CVEs: CVE-2021-41773 | IPs: 10.10.10.5", result)
+
+    def test_no_cves_no_ips_no_meta_line(self):
+        findings = [_finding("Plain finding", step=1)]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertNotIn("CVEs:", result)
+        self.assertNotIn("IPs:", result)
+
+    def test_duplicates_removed_in_output(self):
+        findings = [
+            _finding("Password hash leaked", severity="high", step=5),
+            _finding("Password hash leaked", severity="high", step=7),
+        ]
+        result = format_chain_context(findings, [], [], [_tool(1, "x")])
+        self.assertEqual(result.count("Password hash leaked"), 1)
+
+
+# ===================================================================
+# format_chain_context — summary tier
+# ===================================================================
+
+class TestSummaryTier(unittest.TestCase):
+
+    def test_summary_appears_when_over_limit(self):
+        """With 25 iterations and limit=20, first 5 should appear in summary."""
+        trace = [_tool(i, "execute_curl", analysis=f"analysis_{i}") for i in range(1, 26)]
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        self.assertIn("Earlier Steps", result)
+        self.assertIn("1 [info]: execute_curl -> analysis_1", result)
+        self.assertIn("5 [info]: execute_curl -> analysis_5", result)
+
+    def test_summary_not_shown_when_under_limit(self):
+        """With 10 iterations and limit=20, no summary tier."""
+        trace = [_tool(i, "execute_curl") for i in range(1, 11)]
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        self.assertNotIn("Earlier Steps", result)
+
+    def test_summary_wave_format(self):
+        """Waves in summary tier show tool counts."""
+        trace = [
+            _tool(1, "execute_curl", analysis="shared analysis"),
+            _tool(1, "kali_shell", analysis="shared analysis"),
+        ]
+        # Add enough iterations to push iter 1 into summary
+        for i in range(2, 25):
+            trace.append(_tool(i, "execute_curl", analysis=f"a_{i}"))
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        self.assertIn("Earlier Steps", result)
+        self.assertIn("Wave[1 execute_curl, 1 kali_shell]", result)
+
+    def test_summary_failed_marker(self):
+        """Failed steps in summary tier show FAILED marker."""
+        trace = [_tool(1, "execute_nmap", success=False, analysis="Host down")]
+        for i in range(2, 25):
+            trace.append(_tool(i, "execute_curl", analysis=f"a_{i}"))
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        self.assertIn("FAILED |", result)
+        self.assertIn("Host down", result)
+
+    def test_summary_success_no_failed_marker(self):
+        """Successful steps in summary tier don't show FAILED marker."""
+        trace = [_tool(1, "execute_curl", success=True, analysis="All good")]
+        for i in range(2, 25):
+            trace.append(_tool(i, "execute_curl", analysis=f"a_{i}"))
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        summary_section = result.split("Recent Steps")[0]
+        self.assertNotIn("FAILED |", summary_section)
+
+    def test_summary_max_50_with_omit_message(self):
+        """More than 50 old iterations: oldest are omitted with message."""
+        trace = [_tool(i, "execute_curl", analysis=f"analysis_unique_{i}_end") for i in range(1, 80)]
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        # 79 total, 20 recent, 59 older. summary_max=50, so 9 omitted.
+        self.assertIn("omitted", result)
+        self.assertIn("findings preserved above", result)
+        # Iteration 1 should NOT be in summary (omitted) - use unique suffix to avoid substring match
+        self.assertNotIn("analysis_unique_1_end", result)
+        self.assertNotIn("analysis_unique_9_end", result)
+        # Iteration 10 should be in summary (within the 50 window)
+        self.assertIn("analysis_unique_10_end", result)
+
+    def test_summary_analysis_truncated_to_100(self):
+        """Summary tier truncates analysis to 100 chars."""
+        long_analysis = "A" * 200
+        trace = [_tool(1, "execute_curl", analysis=long_analysis)]
+        for i in range(2, 25):
+            trace.append(_tool(i, "execute_curl", analysis=f"a_{i}"))
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        summary_lines = [l for l in result.split("\n") if "1 [info]:" in l]
+        self.assertEqual(len(summary_lines), 1)
+        # The line should contain at most 100 A's
+        self.assertLessEqual(summary_lines[0].count("A"), 100)
+
+    def test_summary_phase_abbreviations(self):
+        """Summary tier uses abbreviated phase names."""
+        trace = [
+            _tool(1, "x", phase="informational", analysis="a"),
+            _tool(2, "x", phase="exploitation", analysis="b"),
+            _tool(3, "x", phase="post_exploitation", analysis="c"),
+        ]
+        for i in range(4, 26):
+            trace.append(_tool(i, "execute_curl", analysis=f"a_{i}"))
+        result = format_chain_context([], [], [], trace, recent_iterations=20)
+        self.assertIn("[info]", result)
+        self.assertIn("[exploit]", result)
+        self.assertIn("[post-ex]", result)
 
 
 if __name__ == "__main__":

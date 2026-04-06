@@ -137,6 +137,15 @@ RUN pip install --no-cache-dir playwright \
     && playwright install-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
+# Install SecLists wordlists for ffuf/gobuster directory fuzzing
+RUN mkdir -p /usr/share/seclists/Discovery/Web-Content && \
+    curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt \
+        -o /usr/share/seclists/Discovery/Web-Content/common.txt && \
+    curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt \
+        -o /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt && \
+    curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt \
+        -o /usr/share/seclists/Discovery/Web-Content/big.txt
+
 # Ensure ProjectDiscovery Go httpx wins over Python httpx CLI wrapper in PATH
 RUN ln -sf /root/go/bin/httpx /opt/venv/bin/httpx
 

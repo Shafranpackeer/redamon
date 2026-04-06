@@ -8,6 +8,11 @@ description: ffuf fuzzing syntax with matcher/filter strategy and non-interactiv
 Official docs:
 - https://github.com/ffuf/ffuf
 
+Available wordlists (pre-installed in `/usr/share/seclists/Discovery/Web-Content/`):
+- `common.txt` — 4750 entries, standard web content discovery (fast, use first)
+- `big.txt` — 20481 entries, comprehensive directory list
+- `raft-medium-directories.txt` — 29999 entries, raft-based directory enumeration
+
 Canonical syntax:
 `ffuf -w <wordlist> -u <url_with_FUZZ> [flags]`
 
@@ -30,7 +35,7 @@ High-signal flags:
 - `-o <file> -of <json|ejson|md|html|csv|ecsv>` structured output
 
 Agent-safe baseline for automation:
-`ffuf -w wordlist.txt -u https://target.tld/FUZZ -mc 200,204,301,302,307,401,403,405 -ac -t 20 -rate 50 -timeout 10 -noninteractive -of json -o ffuf.json`
+`ffuf -w /usr/share/seclists/Discovery/Web-Content/common.txt -u https://target.tld/FUZZ -mc 200,204,301,302,307,401,403,405 -ac -t 20 -rate 50 -timeout 10 -noninteractive -of json -o ffuf.json`
 
 Common patterns:
 - Basic path fuzzing:

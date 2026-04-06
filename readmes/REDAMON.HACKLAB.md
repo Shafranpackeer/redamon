@@ -209,7 +209,7 @@ Test for NoSQL injection using $where clauses and operator injection
 users' private data.
 ```
 
-### #NQL-ZBIKC -- NoSQL Operator Injection for Authentication Bypass
+### --------------DONE #NQL-ZBIKC -- NoSQL Operator Injection for Authentication Bypass
 ```
 Target the Express REST API on port 80. No credentials are known.
 Find endpoints that query MongoDB. Test for operator injection in
@@ -291,8 +291,7 @@ Monitor server response time and verify service degradation.
 ```
 Target port 80 and port 9090. Find endpoints on port 80 that fetch URLs
 server-side. On port 9090, explore the XML-RPC service for methods
-that accept URL arguments. Test for SSRF with internal URLs and
-the AWS metadata endpoint. Map the internal network topology.
+that accept URL arguments. Test for SSRF with internal URLs. Map the internal network topology.
 ```
 
 ### #SRF-DW2PC -- SSRF with file:// Protocol for Local File Read

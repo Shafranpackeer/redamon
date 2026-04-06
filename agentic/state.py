@@ -890,6 +890,35 @@ def format_objective_history(objective_history: List[dict]) -> str:
     return "\n".join(lines)
 
 
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+
+def _severity_rank(s: str) -> int:
+    return _SEVERITY_ORDER.get((s or "info").lower(), 4)
+
+
+def _dedup_findings(chain_findings: List[dict]) -> List[dict]:
+    """Deduplicate findings by normalized title, keeping earliest occurrence.
+
+    If a later duplicate has higher severity or confidence, upgrade the kept entry.
+    """
+    seen: dict[str, dict] = {}
+    for f in chain_findings:
+        raw_title = f.get("title") or f.get("finding_type") or "custom"
+        key = raw_title.strip().lower()
+        if not key:
+            continue
+        if key in seen:
+            existing = seen[key]
+            if _severity_rank(f.get("severity", "info")) < _severity_rank(existing.get("severity", "info")):
+                existing["severity"] = f["severity"]
+            if (f.get("confidence") or 0) > (existing.get("confidence") or 0):
+                existing["confidence"] = f["confidence"]
+        else:
+            seen[key] = dict(f)
+    return list(seen.values())
+
+
 def _group_trace_by_iteration(execution_trace: List[dict]) -> List[dict]:
     """Group execution_trace entries by iteration number.
 
@@ -938,13 +967,31 @@ def format_chain_context(
 
     # ── Findings ────────────────────────────────────────
     if chain_findings:
+        deduped = _dedup_findings(chain_findings)
+        deduped.sort(key=lambda f: _severity_rank(f.get("severity", "info")))
+
         lines.append("── Findings ──────────────────────────────────────")
-        for f in chain_findings:
+        for f in deduped:
             sev = (f.get("severity") or "info").upper()
-            ftype = f.get("finding_type") or "custom"
-            title = f.get("title") or ftype
+            title = f.get("title") or f.get("finding_type") or "custom"
             step = f.get("step_iteration", "?")
-            lines.append(f"  [{sev}] {title} (step {step})")
+            confidence = f.get("confidence")
+            conf_str = f", {confidence}%" if confidence is not None else ""
+            lines.append(f"  [{sev}] {title} (step {step}{conf_str})")
+
+            evidence = (f.get("evidence") or "").strip()
+            if evidence:
+                lines.append(f"    Evidence: {evidence[:150]}")
+
+            cves = f.get("related_cves") or []
+            ips = f.get("related_ips") or []
+            meta_parts = []
+            if cves:
+                meta_parts.append(f"CVEs: {', '.join(cves[:5])}")
+            if ips:
+                meta_parts.append(f"IPs: {', '.join(ips[:5])}")
+            if meta_parts:
+                lines.append(f"    {' | '.join(meta_parts)}")
         lines.append("")
 
     # ── Failed Attempts ─────────────────────────────────
@@ -955,9 +1002,9 @@ def format_chain_context(
             ftype = fl.get("failure_type") or "error"
             err = fl.get("error_message") or ""
             lesson = fl.get("lesson_learned") or ""
-            lines.append(f"  [step {step}] {ftype}: {err[:200]}")
+            lines.append(f"  [step {step}] {ftype}: {err[:300]}")
             if lesson:
-                lines.append(f"           Lesson: {lesson[:200]}")
+                lines.append(f"           Lesson: {lesson[:300]}")
         lines.append("")
 
     # ── Decisions ───────────────────────────────────────
@@ -980,6 +1027,43 @@ def format_chain_context(
         total_tools = len(execution_trace)
 
         recent = iter_groups[-recent_iterations:]
+        older = iter_groups[:-recent_iterations] if total_iterations > recent_iterations else []
+
+        # ── Summary tier for old steps ──
+        if older:
+            summary_max = 50
+            if len(older) > summary_max:
+                omitted = len(older) - summary_max
+                summary_groups = older[-summary_max:]
+                first_shown = summary_groups[0]["iteration"]
+                lines.append(
+                    f"── Earlier Steps (iterations {first_shown}-{older[-1]['iteration']} summary, "
+                    f"{omitted} older omitted -- findings preserved above) ──"
+                )
+            else:
+                summary_groups = older
+                lines.append(f"── Earlier Steps (iterations 1-{older[-1]['iteration']} summary) ──")
+
+            for group in summary_groups:
+                it = group["iteration"]
+                phase_raw = group["phase"] or "?"
+                phase = {"informational": "info", "exploitation": "exploit", "post_exploitation": "post-ex"}.get(phase_raw, phase_raw[:6])
+                analysis = group["output_analysis"] or ""
+                tools = group["tools"]
+                any_failed = any(not t.get("success", True) for t in tools)
+                fail_marker = " FAILED |" if any_failed else ""
+                if group["is_wave"]:
+                    tool_counts: dict = {}
+                    for t in tools:
+                        tname = t.get("tool_name") or "unknown"
+                        tool_counts[tname] = tool_counts.get(tname, 0) + 1
+                    tool_str = ", ".join(f"{c} {n}" for n, c in tool_counts.items())
+                    lines.append(f"  {it} [{phase}]: Wave[{tool_str}] ->{fail_marker} {analysis[:100]}")
+                else:
+                    tool_name = tools[0].get("tool_name") or "none"
+                    lines.append(f"  {it} [{phase}]: {tool_name} ->{fail_marker} {analysis[:100]}")
+            lines.append("")
+
         if total_iterations > recent_iterations:
             lines.append(
                 f"── Recent Steps (last {len(recent)} of {total_iterations} "
@@ -1014,12 +1098,12 @@ def format_chain_context(
                     else:
                         fail_count += 1
                         failed_tools.append(
-                            f"{tname}: {(t.get('error_message') or '')[:100]}"
+                            f"{tname}: {(t.get('error_message') or '')[:300]}"
                         )
                     targs = t.get("tool_args") or {}
                     if targs:
                         tool_args_list.append(
-                            f"    - {tname}: {str(targs)[:200]}"
+                            f"    - {tname}: {str(targs)[:300]}"
                         )
 
                 tool_summary = ", ".join(

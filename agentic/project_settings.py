@@ -86,7 +86,7 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
         'execute_nmap': ['informational', 'exploitation', 'post_exploitation'],
         'execute_nuclei': ['informational', 'exploitation'],
         'kali_shell': ['informational', 'exploitation', 'post_exploitation'],
-        'execute_code': ['exploitation', 'post_exploitation'],
+        'execute_code': ['informational', 'exploitation', 'post_exploitation'],
         'execute_playwright': ['informational', 'exploitation', 'post_exploitation'],
         'execute_hydra': ['exploitation', 'post_exploitation'],
         'metasploit_console': ['exploitation', 'post_exploitation'],
