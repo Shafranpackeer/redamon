@@ -64,6 +64,7 @@ env/
 .env
 *.env
 .env.*
+!.env.example
 
 # IDE / Editor settings
 .idea/
