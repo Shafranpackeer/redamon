@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.8.0] - 2026-04-10
+
+### Added
+
+- **9 new AI agent tools** -- major expansion of the agent's offensive toolkit, all exposed as dedicated MCP tools with full CLI argument passthrough:
+  - **execute_httpx** -- HTTP probing and fingerprinting (status codes, titles, server headers, tech detection, redirect following)
+  - **execute_subfinder** -- passive subdomain enumeration via OSINT sources (certificate transparency, DNS datasets, search engines). No traffic to target
+  - **execute_gau** -- passive URL discovery from Wayback Machine, Common Crawl, AlienVault OTX, and URLScan archives. No traffic to target
+  - **execute_jsluice** -- JavaScript static analysis for hidden API endpoints, URL paths, query parameters, and secrets (AWS keys, API tokens). Local file analysis only
+  - **execute_katana** -- web crawling and endpoint/URL discovery with JavaScript parsing and known-file enumeration (robots.txt, sitemap.xml)
+  - **execute_amass** -- OWASP Amass subdomain enumeration and network mapping (passive + active modes, ASN intel)
+  - **execute_arjun** -- HTTP parameter discovery by brute-forcing ~25,000 common parameter names (GET, POST, JSON, XML)
+  - **execute_ffuf** -- web fuzzing for hidden directories, files, virtual hosts, and parameters using FUZZ keyword injection
+  - **execute_subfinder** -- passive subdomain discovery from third-party OSINT sources
+
+- **URLScan API key integration** -- optional API key for enriching `execute_gau` results with URLScan archived data. Configured in Settings, auto-injected into GAU's `~/.gau.toml` config at runtime
+
+- **Tool Phase Matrix expansion** -- all 9 new tools added to the agent's tool-phase permission matrix with default phase assignments (informational + exploitation). Configurable per-project in the Tool Matrix UI
+
+- **Stealth mode rules for all new tools** -- each new tool has calibrated stealth-mode restrictions:
+  - No restrictions: `execute_subfinder`, `execute_gau`, `execute_jsluice` (passive/local only)
+  - Heavily restricted: `execute_httpx` (single target, rate-limited), `execute_katana` (depth 1, rate-limited), `execute_amass` (passive mode only)
+  - Forbidden: `execute_arjun`, `execute_ffuf` (inherently noisy brute-force tools)
+
+- **Tool registry documentation** -- detailed usage guides for all 9 tools in the agent's tool registry, including argument formats, examples, and when-to-use guidance
+
+- **Graph empty state component** -- new `GraphEmptyState` component replaces the plain text "No data found" message on the graph canvas
+
+### Changed
+
+- **15 new pentesting tools in kali-sandbox** -- major expansion of the agent's kali_shell toolkit, all accessible as Type A tools (no dedicated MCP wrapper needed):
+  - **Web/infra scanning:** nikto (web server misconfiguration scanner), whatweb (1800+ plugin tech fingerprinter), testssl.sh (SSL/TLS audit), commix (command injection detection/exploitation), SSTImap (server-side template injection)
+  - **DNS:** dnsrecon (zone transfers, SRV records, DNSSEC walk), dnsx (fast bulk DNS resolution, ProjectDiscovery pipeline)
+  - **Windows/AD:** enum4linux-ng (SMB/RPC enumeration with JSON output), netexec/nxc (multi-protocol exploitation -- SMB, WinRM, LDAP, MSSQL, RDP), bloodhound-python (AD relationship collection), certipy-ad (AD-CS ESC1-ESC13 attacks), ldapdomaindump (quick LDAP dumps)
+  - **Secrets/passwords:** gitleaks (git repo secret scanning), hashid (hash type identification), cewl (custom wordlist generation from target websites)
+
+- **kali_shell timeout increased** -- from 120s to 300s (5 min), enabling tools like nikto, testssl.sh, and bloodhound-python that need more than 2 minutes. Updated across MCP server, tool registry, dev docs, and wiki
+
+- **Kali sandbox Dockerfile** -- installs subfinder, katana, jsluice (with CGO for tree-sitter), amass, gau, and paramspider. Adds arjun to Python requirements
+
+- **kali_shell tool description** -- restructured into categorized sections (Exploitation, Password cracking, Web/infra, DNS, Windows/AD, API/GraphQL, Secrets, Tunneling) with usage examples for every tool. Added all 15 new tools, restored missing entries (dig, nslookup, smbclient, ngrok, chisel), and expanded the "Do NOT use" list to cover all 17 dedicated MCP tools
+
+- **Rules of Engagement (ROE)** -- `execute_ffuf` added to brute_force category for ROE blocking
+
+- **redamon.sh update logic** -- agent container now always rebuilds (not just restarts) when any `agentic/` file changes, since source code is baked into the image without volume mount
+
+- **Settings page** -- removed "AI Agent" badge from Censys, FOFA, AlienVault OTX, Netlas, VirusTotal, ZoomEye, and Criminal IP API key fields (these keys are used by Recon Pipeline only, not the agent)
+
+---
+
 ## [3.7.0] - 2026-04-09
 
 ### Added

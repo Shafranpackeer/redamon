@@ -601,16 +601,13 @@ cmd_update() {
             restart_only+=(kali-sandbox)
         fi
 
-        # agent: rebuild only if Dockerfile/requirements changed, else restart.
-        # The agent build context is the project root (./), and the image bakes in
-        # both knowledge_base/ and graph_db/ as sibling packages, so changes to those
-        # directories also require a rebuild.
-        if echo "$changed_files" | grep -q "^agentic/\(Dockerfile\|requirements\)"; then
+        # agent: always rebuild when agentic/ changes — source code is baked into
+        # the image (no volume mount for ./agentic:/app), so restart alone won't
+        # pick up .py changes.
+        if echo "$changed_files" | grep -q "^agentic/"; then
             rebuild_core+=(agent)
         elif echo "$changed_files" | grep -qE "^(knowledge_base|graph_db)/"; then
             rebuild_core+=(agent)
-        elif echo "$changed_files" | grep -q "^agentic/"; then
-            restart_only+=(agent)
         fi
 
         # Tool-profile images (build-only, not running containers)

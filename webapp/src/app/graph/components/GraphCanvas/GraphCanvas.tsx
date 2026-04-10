@@ -5,6 +5,7 @@ import { GraphData, GraphNode } from '../../types'
 import { GraphCanvas2D } from './GraphCanvas2D'
 import { GraphCanvas3D } from './GraphCanvas3D'
 import { GraphNavControls } from './GraphNavControls'
+import { GraphEmptyState } from './GraphEmptyState'
 import styles from './GraphCanvas.module.css'
 
 export const AUTO_2D_THRESHOLD = 1000
@@ -69,11 +70,7 @@ export const GraphCanvas = memo(function GraphCanvas({
   }
 
   if (!data || data.nodes.length === 0) {
-    return (
-      <div className={styles.empty}>
-        No data found for project: {projectId}
-      </div>
-    )
+    return <GraphEmptyState />
   }
 
   if (effective3D) {

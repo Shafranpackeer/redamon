@@ -28,7 +28,7 @@ def _check_roe_blocked(tool_name: str, phase: str) -> str | None:
         return None
 
     CATEGORY_TOOL_MAP = {
-        'brute_force': ['execute_hydra', 'execute_wpscan'],
+        'brute_force': ['execute_hydra', 'execute_wpscan', 'execute_ffuf'],
         'dos': [],
         'social_engineering': [],
         'exploitation': ['metasploit_console', 'execute_hydra'],

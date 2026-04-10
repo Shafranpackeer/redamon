@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/samugit83/redamon/stargazers"><img height="24" src="https://img.shields.io/github/stars/samugit83/redamon?style=flat&color=2E8B57&label=Stars" alt="GitHub Stars"/></a>
-  <img height="24" src="https://img.shields.io/badge/v3.6.0-release-2E8B57?style=flat" alt="Version 3.7.0"/>
+  <img height="24" src="https://img.shields.io/badge/v3.6.0-release-2E8B57?style=flat" alt="Version 3.8.0"/>
   <img height="24" src="https://img.shields.io/badge/WARNING-SECURITY%20TOOL-B22222?style=flat" alt="Security Tool Warning"/>
   <img height="24" src="https://img.shields.io/badge/LICENSE-MIT-4169A1?style=flat" alt="MIT License"/>
   <img height="24" src="https://img.shields.io/badge/END--TO--END-PIPELINE-A01025?style=flat" alt="End-to-End Pipeline"/>
@@ -418,16 +418,24 @@ A **LangGraph-based autonomous agent** implementing the ReAct pattern. It progre
 | | **web_search** | Internet search via Tavily for CVE details, exploit PoCs, advisories | All | -- |
 | | **shodan** | Shodan OSINT -- host details, reverse DNS, device search | Info, Exploit | -- |
 | | **google_dork** | Google dorking via SerpAPI -- exposed files, admin panels, directory listings | Info | -- |
+| **Recon & OSINT** | **execute_subfinder** | Passive subdomain enumeration via OSINT (CT logs, DNS datasets). No traffic to target | Info, Exploit | network_recon :8000 |
+| | **execute_gau** | Passive URL discovery from Wayback Machine, Common Crawl, AlienVault OTX, URLScan. No traffic to target | Info, Exploit | network_recon :8000 |
+| | **execute_amass** | OWASP Amass subdomain enumeration and network mapping (passive + active, ASN intel) | Info, Exploit | network_recon :8000 |
 | **Scanning** | **execute_naabu** | Fast port scanning and verification | Info, Exploit | network_recon :8000 |
 | | **execute_nmap** | Deep service detection (-sV), OS fingerprint, NSE scripts | All | nmap :8004 |
 | | **execute_nuclei** | CVE verification and exploitation with 9,000+ templates + custom uploads | Info, Exploit | nuclei :8002 |
+| | **execute_httpx** | HTTP probing and fingerprinting -- status codes, titles, server headers, tech detection | Info, Exploit | network_recon :8000 |
 | | **execute_wpscan** | WordPress vulnerability scanner -- detects vulnerable plugins, themes, users, misconfigurations | Info, Exploit | network_recon :8000 |
 | **Web & HTTP** | **execute_curl** | HTTP requests -- reachability, headers, status codes, banners | All | network_recon :8000 |
+| | **execute_katana** | Web crawling and endpoint discovery with JS parsing and known-file enumeration | Info, Exploit | network_recon :8000 |
+| | **execute_jsluice** | JavaScript static analysis for hidden API endpoints, URL paths, and secrets | Info, Exploit | network_recon :8000 |
+| | **execute_arjun** | HTTP parameter discovery by brute-forcing ~25,000 common parameter names | Info, Exploit | network_recon :8000 |
+| | **execute_ffuf** | Web fuzzing for hidden directories, files, virtual hosts, and parameters | Info, Exploit | network_recon :8000 |
 | | **execute_playwright** | Headless Chromium browser automation -- JS-rendered content extraction and interactive scripting for SPAs, form testing, XSS verification | All | playwright :8005 |
 | **Exploitation** | **metasploit_console** | Persistent msfconsole -- exploit execution, session management, post-exploitation | Exploit, Post | metasploit :8003 |
 | | **msf_restart** | Full Metasploit reset -- kills all sessions, clears module state | Exploit, Post | metasploit :8003 |
 | | **execute_hydra** | THC Hydra brute force -- 50+ protocols (SSH, FTP, RDP, SMB, HTTP, MySQL, etc.) | Exploit, Post | network_recon :8000 |
-| **Code Execution** | **kali_shell** | Full Kali Linux shell -- netcat, sqlmap, smbclient, msfvenom, searchsploit, and 30+ CLI tools | All | network_recon :8000 |
+| **Code Execution** | **kali_shell** | Full Kali Linux shell -- nikto, whatweb, testssl, commix, dnsrecon, dnsx, enum4linux-ng, netexec, bloodhound-python, certipy-ad, gitleaks, and 50+ CLI tools | All | network_recon :8000 |
 | | **execute_code** | Write and run code files (Python, bash, Ruby, Perl, C, C++) -- no shell escaping | Exploit, Post | network_recon :8000 |
 
 <sub>All MCP tools run inside a Kali Linux sandbox container. Tools marked as dangerous require manual confirmation before execution. Stealth mode restricts active tools to passive-only or single-target operations. **Note:** WPScan is licensed under the [WPScan Public Source License](https://github.com/wpscanteam/wpscan/blob/master/LICENSE) (not MIT). Free for pentesting assessments and personal use; commercial use may require a separate license from [wpscan.com](https://wpscan.com).</sub>

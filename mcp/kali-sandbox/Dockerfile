@@ -51,6 +51,22 @@ RUN apt-get install -y --fix-missing \
     # DoS / stress-testing
     hping3 \
     slowhttptest \
+    # Web server & technology scanning
+    nikto \
+    whatweb \
+    # SMB/Windows/AD enumeration
+    enum4linux-ng \
+    samba-common-bin \
+    # Multi-protocol network exploitation (CrackMapExec successor)
+    netexec \
+    # SSL/TLS configuration auditing
+    testssl.sh \
+    # Command injection exploitation
+    commix \
+    # DNS enumeration (zone transfers, SRV, DNSSEC walk)
+    dnsrecon \
+    # Custom wordlist generation from target websites
+    cewl \
     # Compilers (for execute_code C/C++ support)
     gcc \
     g++ \
@@ -80,21 +96,45 @@ RUN ARCH=$(dpkg --print-architecture) && \
 ENV PATH="${PATH}:/usr/local/go/bin:/root/go/bin"
 ENV GOPATH="/root/go"
 
-# Install ProjectDiscovery tools (naabu, nuclei, interactsh)
+# Install ProjectDiscovery tools (naabu, nuclei, interactsh, subfinder, katana)
 # Source: https://github.com/projectdiscovery/naabu (AGPL-3.0)
 # Source: https://github.com/projectdiscovery/nuclei (AGPL-3.0)
 # Source: https://github.com/projectdiscovery/interactsh (MIT)
+# Source: https://github.com/projectdiscovery/subfinder (MIT)
+# Source: https://github.com/projectdiscovery/katana (MIT)
 RUN go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
     && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
-    && go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest
+    && go install -v github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest \
+    && go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
+    && go install -v github.com/projectdiscovery/katana/cmd/katana@latest
 
 # Install API security testing tools (Go-based)
 # Source: https://github.com/ffuf/ffuf (MIT) - Fast web fuzzer
 # Source: https://github.com/projectdiscovery/httpx (MIT) - HTTP toolkit
 # Source: https://github.com/hahwul/dalfox (MIT) - XSS vulnerability scanner
+# Source: https://github.com/projectdiscovery/dnsx (MIT) - Fast DNS toolkit
 RUN go install -v github.com/ffuf/ffuf/v2@latest \
     && go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest \
-    && go install -v github.com/hahwul/dalfox/v2@latest
+    && go install -v github.com/hahwul/dalfox/v2@latest \
+    && go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+
+# Install jsluice -- JavaScript static analyzer for hidden endpoints and secrets
+# Source: https://github.com/BishopFox/jsluice (MIT)
+# Requires CGO for tree-sitter bindings; gcc already installed above
+RUN CGO_ENABLED=1 go install -v github.com/BishopFox/jsluice/cmd/jsluice@latest
+
+# Install gitleaks -- git repository secret scanner (API keys, passwords, tokens)
+# Source: https://github.com/gitleaks/gitleaks (MIT)
+# Note: Go module path uses old org (zricethezav), not new org (gitleaks) -- known issue #1839
+RUN go install -v github.com/zricethezav/gitleaks/v8@latest
+
+# Install OWASP Amass (subdomain enumeration & network mapping)
+# Source: https://github.com/owasp-amass/amass (Apache-2.0)
+RUN go install -v github.com/owasp-amass/amass/v4/...@master
+
+# Install GAU (GetAllUrls) -- passive URL discovery from web archives
+# Source: https://github.com/lc/gau (MIT)
+RUN go install -v github.com/lc/gau/v2/cmd/gau@latest
 
 # Update nuclei templates
 RUN nuclei -update-templates || true
@@ -145,6 +185,24 @@ RUN mkdir -p /usr/share/seclists/Discovery/Web-Content && \
         -o /usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt && \
     curl -sL https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/big.txt \
         -o /usr/share/seclists/Discovery/Web-Content/big.txt
+
+# ParamSpider — passive URL parameter discovery from Wayback Machine
+# Source: https://github.com/devanshbatham/ParamSpider (MIT)
+RUN pip install --no-cache-dir git+https://github.com/devanshbatham/ParamSpider.git
+
+# AD/post-exploitation Python tools
+# hashID: hash type identification (MD5, NTLM, bcrypt, etc) — unmaintained since 2015 but functional
+# bloodhound: Active Directory relationship collector (attack path analysis)
+# certipy-ad: AD Certificate Services exploitation (ESC1-ESC13) — pins impacket~=0.13.0
+# ldapdomaindump: LDAP enumeration (users, groups, password policies)
+RUN pip install --no-cache-dir hashID bloodhound certipy-ad ldapdomaindump
+
+# SSTImap — Server-Side Template Injection detection & exploitation
+# Source: https://github.com/vladko312/SSTImap (MIT)
+RUN git clone --depth 1 https://github.com/vladko312/SSTImap.git /opt/sstimap \
+    && pip install --no-cache-dir -r /opt/sstimap/requirements.txt \
+    && chmod +x /opt/sstimap/sstimap.py \
+    && ln -s /opt/sstimap/sstimap.py /usr/local/bin/sstimap
 
 # Ensure ProjectDiscovery Go httpx wins over Python httpx CLI wrapper in PATH
 RUN ln -sf /root/go/bin/httpx /opt/venv/bin/httpx

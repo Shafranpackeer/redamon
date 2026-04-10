@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 DANGEROUS_TOOLS = frozenset({
     'execute_nmap', 'execute_naabu', 'execute_nuclei', 'execute_curl',
-    'msf_restart', 'kali_shell', 'metasploit_console', 'execute_code',
-    'execute_hydra', 'execute_playwright', 'execute_wpscan',
+    'execute_httpx', 'msf_restart', 'kali_shell', 'metasploit_console',
+    'execute_code', 'execute_hydra', 'execute_playwright', 'execute_wpscan',
+    'execute_arjun', 'execute_ffuf', 'execute_amass', 'execute_gau',
+    'execute_katana',
 })
 
 # =============================================================================
@@ -96,7 +98,15 @@ DEFAULT_AGENT_SETTINGS: dict[str, Any] = {
         'query_graph': ['informational', 'exploitation', 'post_exploitation'],
         'execute_curl': ['informational', 'exploitation', 'post_exploitation'],
         'execute_naabu': ['informational', 'exploitation'],
+        'execute_httpx': ['informational', 'exploitation'],
+        'execute_subfinder': ['informational', 'exploitation'],
         'execute_wpscan': ['informational', 'exploitation'],
+        'execute_jsluice': ['informational', 'exploitation'],
+        'execute_amass': ['informational', 'exploitation'],
+        'execute_arjun': ['informational', 'exploitation'],
+        'execute_ffuf': ['informational', 'exploitation'],
+        'execute_gau': ['informational', 'exploitation'],
+        'execute_katana': ['informational', 'exploitation'],
         'execute_nmap': ['informational', 'exploitation', 'post_exploitation'],
         'execute_nuclei': ['informational', 'exploitation'],
         'kali_shell': ['informational', 'exploitation', 'post_exploitation'],

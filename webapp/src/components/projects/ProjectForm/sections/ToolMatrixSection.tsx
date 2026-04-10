@@ -35,6 +35,12 @@ const TOOL_KEY_INFO: Record<string, { field: string; label: string; hint: string
     hint: 'Enriches execute_wpscan results with vulnerability data from the WPScan database (free: 25 req/day)',
     url: 'https://wpscan.com/register',
   },
+  execute_gau: {
+    field: 'urlscanApiKey',
+    label: 'URLScan',
+    hint: 'Enriches execute_gau results with URLScan archived data (free tier available)',
+    url: 'https://urlscan.io/user/signup',
+  },
 }
 
 interface ToolMatrixSectionProps {
@@ -65,6 +71,7 @@ export function ToolMatrixSection({ data, updateField }: ToolMatrixSectionProps)
         if (!settings.shodanApiKey) missing.add('shodan')
         if (!settings.serpApiKey) missing.add('google_dork')
         if (!settings.wpscanApiToken) missing.add('execute_wpscan')
+        if (!settings.urlscanApiKey) missing.add('execute_gau')
         setMissingKeys(missing)
       })
       .catch(() => {})
@@ -140,9 +147,17 @@ export function ToolMatrixSection({ data, updateField }: ToolMatrixSectionProps)
               { id: 'google_dork', label: 'google_dork' },
               { id: 'execute_curl', label: 'execute_curl' },
               { id: 'execute_naabu', label: 'execute_naabu' },
+              { id: 'execute_httpx', label: 'execute_httpx' },
+              { id: 'execute_subfinder', label: 'execute_subfinder' },
+              { id: 'execute_gau', label: 'execute_gau' },
               { id: 'execute_nmap', label: 'execute_nmap' },
               { id: 'execute_nuclei', label: 'execute_nuclei' },
               { id: 'execute_wpscan', label: 'execute_wpscan' },
+              { id: 'execute_jsluice', label: 'execute_jsluice' },
+              { id: 'execute_amass', label: 'execute_amass' },
+              { id: 'execute_katana', label: 'execute_katana' },
+              { id: 'execute_arjun', label: 'execute_arjun' },
+              { id: 'execute_ffuf', label: 'execute_ffuf' },
               { id: 'kali_shell', label: 'kali_shell' },
               { id: 'execute_code', label: 'execute_code' },
               { id: 'execute_playwright', label: 'execute_playwright' },

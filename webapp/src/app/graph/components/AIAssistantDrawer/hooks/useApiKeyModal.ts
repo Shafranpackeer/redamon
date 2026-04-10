@@ -5,6 +5,7 @@ export const API_KEY_INFO: Record<string, { field: string; label: string; hint: 
   shodan: { field: 'shodanApiKey', label: 'Shodan', hint: 'Enables the shodan tool for internet-wide OSINT (search, host info, DNS, count)', url: 'https://account.shodan.io/' },
   google_dork: { field: 'serpApiKey', label: 'SerpAPI', hint: 'Enables google_dork tool for Google dorking OSINT (site:, inurl:, filetype:)', url: 'https://serpapi.com/manage-api-key' },
   execute_wpscan: { field: 'wpscanApiToken', label: 'WPScan', hint: 'Enriches execute_wpscan results with vulnerability data from the WPScan database (free: 25 req/day)', url: 'https://wpscan.com/register' },
+  execute_gau: { field: 'urlscanApiKey', label: 'URLScan', hint: 'Enriches execute_gau results with URLScan archived data (free tier available)', url: 'https://urlscan.io/user/signup' },
 }
 
 export function useApiKeyModal(userId: string) {
@@ -25,6 +26,7 @@ export function useApiKeyModal(userId: string) {
         if (!settings.shodanApiKey) missing.add('shodan')
         if (!settings.serpApiKey) missing.add('google_dork')
         if (!settings.wpscanApiToken) missing.add('execute_wpscan')
+        if (!settings.urlscanApiKey) missing.add('execute_gau')
         setMissingApiKeys(missing)
       })
       .catch(() => {})

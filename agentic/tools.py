@@ -1457,6 +1457,10 @@ class PhaseAwareToolExecutor:
         """Store WPScan API token for auto-injection into execute_wpscan args."""
         self._wpscan_api_token = token
 
+    def set_gau_urlscan_api_key(self, key: str) -> None:
+        """Store URLScan API key for auto-injection into execute_gau config."""
+        self._gau_urlscan_api_key = key
+
     def _extract_text_from_output(self, output) -> str:
         """
         Extract clean text from MCP tool output.
@@ -1561,6 +1565,11 @@ class PhaseAwareToolExecutor:
                 if getattr(self, '_wpscan_api_token', '') and '--api-token' not in args:
                     args = f"--api-token {self._wpscan_api_token} {args}"
                     tool_args = {**tool_args, "args": args}
+                output = await tool.ainvoke(tool_args)
+            elif tool_name == "execute_gau":
+                # Inject URLScan API key if configured (written to ~/.gau.toml by MCP server)
+                if getattr(self, '_gau_urlscan_api_key', ''):
+                    tool_args = {**tool_args, "urlscan_api_key": self._gau_urlscan_api_key}
                 output = await tool.ainvoke(tool_args)
             else:
                 # MCP tools - invoke with the appropriate argument

@@ -127,6 +127,18 @@ TOOL_REGISTRY = {
             '   - Do NOT use for vuln probing — use execute_nuclei instead'
         ),
     },
+    "execute_httpx": {
+        "purpose": "HTTP probing & fingerprinting",
+        "when_to_use": "Probe live hosts, detect technologies, extract status codes/titles/server headers",
+        "args_format": '"args": "httpx arguments without \'httpx\' prefix"',
+        "description": (
+            '**execute_httpx** (HTTP probing & tech fingerprinting)\n'
+            '   - Fast HTTP prober: status codes, page titles, server headers, tech detection\n'
+            '   - Follows redirects, probes specific paths, supports JSON output\n'
+            '   - Example: `-u http://10.0.0.5 -sc -title -server -td -fr -silent -j`\n'
+            '   - Use INSTEAD of curl when you need structured multi-field HTTP fingerprinting'
+        ),
+    },
     "execute_naabu": {
         "purpose": "Port scanning",
         "when_to_use": "ONLY to verify ports or scan new targets",
@@ -135,6 +147,67 @@ TOOL_REGISTRY = {
             '**execute_naabu** (Fast port scanning)\n'
             '   - Verify open ports or scan targets not yet in graph\n'
             '   - Example: `-host 10.0.0.5 -p 80,443,8080 -json`'
+        ),
+    },
+    "execute_jsluice": {
+        "purpose": "JavaScript static analysis for hidden endpoints and secrets",
+        "when_to_use": "Analyze downloaded JS files for hidden API endpoints, paths, parameters, and secrets (AWS keys, API tokens)",
+        "args_format": '"args": "jsluice arguments without \'jsluice\' prefix"',
+        "description": (
+            '**execute_jsluice** (JavaScript static analysis -- passive, local only)\n'
+            '   - Extracts hidden API endpoints, URL paths, query parameters from JS files\n'
+            '   - Finds secrets: AWS keys, API tokens, credentials, private keys\n'
+            '   - **Reads LOCAL files only** -- download JS files first via execute_curl\n'
+            '   - Workflow: `execute_curl -s -o /tmp/app.js http://target/js/app.js` then\n'
+            '     `execute_jsluice "urls --resolve-paths http://target /tmp/app.js"`\n'
+            '   - Subcommands: `urls` (endpoints) | `secrets` (credentials/keys)\n'
+            '   - Output: JSON lines (one finding per line)\n'
+            '   - Use after discovering JS file URLs via query_graph or web crawling'
+        ),
+    },
+    "execute_katana": {
+        "purpose": "Web crawling and endpoint/URL discovery",
+        "when_to_use": "Crawl web targets to discover endpoints, URLs, JS-linked paths, and hidden resources",
+        "args_format": '"args": "katana arguments without \'katana\' prefix"',
+        "description": (
+            '**execute_katana** (Web crawling & endpoint discovery)\n'
+            '   - Crawls web targets to discover URLs, endpoints, JS-linked paths, and known files\n'
+            '   - JavaScript parsing (`-jc`) finds endpoints hidden in JS bundles\n'
+            '   - Known-file crawling (`-kf all`) checks robots.txt and sitemap.xml\n'
+            '   - Key flags: `-u URL`, `-d depth`, `-jc` (JS crawl), `-jsonl` (JSON output), '
+            '`-rl rate-limit`, `-c concurrency`, `-kf all|robotstxt|sitemapxml`, '
+            '`-ef ext1,ext2` (extension filter)\n'
+            '   - Safe baseline: `-u URL -d 3 -jc -kf robotstxt -c 10 -rl 50 -ef png,jpg,gif,css,woff -silent`\n'
+            '   - Use `-jsonl` for JSON output with status codes, content types, and response metadata\n'
+            '   - For large crawls, save to file: `-o /tmp/katana.jsonl` then read via kali_shell\n'
+            '   - Feed discovered URLs into execute_nuclei, execute_jsluice, or execute_arjun for deeper testing\n'
+            '   - ACTIVE tool: sends HTTP requests to the target. Use after passive recon (query_graph, subfinder)'
+        ),
+    },
+    "execute_subfinder": {
+        "purpose": "Passive subdomain enumeration (OSINT)",
+        "when_to_use": "Discover subdomains via passive sources (CT logs, DNS datasets) -- no traffic to target",
+        "args_format": '"args": "subfinder arguments without \'subfinder\' prefix"',
+        "description": (
+            '**execute_subfinder** (Passive subdomain discovery)\n'
+            '   - OSINT-only: certificate transparency, DNS datasets, search engines\n'
+            '   - No traffic sent to target; purely passive\n'
+            '   - Use `-json -silent` for structured output (fields: host, source, input)\n'
+            '   - Use `-all` for maximum source coverage\n'
+            '   - Example: `-d example.com -all -json -silent`'
+        ),
+    },
+    "execute_gau": {
+        "purpose": "Passive URL discovery from web archives (OSINT)",
+        "when_to_use": "Discover known URLs/endpoints from Wayback Machine, Common Crawl, AlienVault OTX -- no traffic to target",
+        "args_format": '"args": "gau arguments without \'gau\' prefix"',
+        "description": (
+            '**execute_gau** (Passive URL discovery from web archives)\n'
+            '   - OSINT-only: queries Wayback Machine, Common Crawl, AlienVault OTX, URLScan\n'
+            '   - No traffic sent to target; purely passive archive lookups\n'
+            '   - Use `--json` for structured output, `--subs` to include subdomains\n'
+            '   - Use `--blacklist png,jpg,gif,css,woff` to filter static assets\n'
+            '   - Example: `--subs --json example.com`'
         ),
     },
     "execute_nmap": {
@@ -147,24 +220,70 @@ TOOL_REGISTRY = {
             '   - Slower than naabu but far more detailed'
         ),
     },
+    "execute_amass": {
+        "purpose": "Subdomain enumeration & network mapping",
+        "when_to_use": "Discover subdomains, map attack surface, find related infrastructure",
+        "args_format": '"args": "amass arguments without \'amass\' prefix"',
+        "description": (
+            '**execute_amass** (OWASP Amass -- subdomain discovery)\n'
+            '   - Discovers subdomains via passive (cert transparency, DNS, archives) '
+            'and active (DNS brute-force, zone transfers) techniques\n'
+            '   - Primary subcommand: `enum -d DOMAIN -timeout MINUTES`\n'
+            '   - Passive only: `enum -passive -d DOMAIN` (no traffic to target)\n'
+            '   - Active + brute: `enum -d DOMAIN -active -brute -timeout 10`\n'
+            '   - Intel mode: `intel -asn ASN_NUMBER` (discover root domains)\n'
+            '   - Default timeout: 10 minutes. Always set `-timeout` to control duration'
+        ),
+    },
     "kali_shell": {
         "purpose": "General shell execution in Kali sandbox",
         "when_to_use": "Run shell commands, download PoCs, use Kali tools (NOT for writing code — use execute_code)",
         "args_format": '"command": "full shell command to execute"',
         "description": (
-            '**kali_shell** (Kali Linux shell — bash -c)\n'
-            '   - Full Kali toolset. Timeout: 120s.\n'
-            '   - **CLI tools:** netcat, socat, rlwrap, msfvenom, searchsploit, sqlmap, '
-            'john, smbclient, sshpass, jq, git, wget, gcc/g++/make, perl, hping3, slowhttptest, interactsh-client, '
-            'ffuf, httpx, jwt_tool, graphql-cop, graphqlmap, dalfox, masscan\n'
-            '   - **Wordlists (SecLists):** pre-installed at `/usr/share/seclists/Discovery/Web-Content/`:\n'
-            '     - `common.txt` (4750 entries) — standard web content discovery\n'
-            '     - `big.txt` (20481 entries) — comprehensive directory list\n'
-            '     - `raft-medium-directories.txt` (29999 entries) — raft-based directory enumeration\n'
+            '**kali_shell** (Kali Linux shell -- bash -c)\n'
+            '   - Full Kali toolset. Timeout: 300s (5 min).\n'
+            '   - **General utils:** netcat (`nc -zv IP PORT`), socat, rlwrap, '
+            'jq, git, wget, perl, gcc/g++/make\n'
+            '   - **Exploitation:** msfvenom (payload generation), '
+            'searchsploit (`-j` JSON output, `-m ID` copy exploit to cwd), '
+            'sqlmap (`-u URL --batch --forms --risk 2 --level 3`), '
+            'dalfox (XSS scanner: `dalfox url URL`), '
+            'interactsh-client (blind/OOB callback server for SSRF/XXE/RCE testing)\n'
+            '   - **Password cracking:** john (`--wordlist=/usr/share/seclists/... /tmp/hashes.txt`), '
+            'hashid (identify hash types: `hashid HASH`), '
+            'cewl (build wordlist from target site: `cewl -d 2 -w /tmp/wordlist.txt URL`)\n'
+            '   - **Web/infra scanning:** nikto (web server misconfigs: `nikto -h URL --maxtime 280`), '
+            'whatweb (deep tech fingerprinting: `whatweb -a 3 URL`), '
+            'testssl (SSL/TLS audit: `testssl --fast URL:443`), '
+            'commix (command injection: `commix -u "URL?param=test" --batch`), '
+            'sstimap (SSTI: `sstimap -u "URL?param=test"`)\n'
+            '   - **DNS:** dig (`dig axfr domain @ns`, `dig ANY domain`), nslookup, host, '
+            'dnsrecon (`dnsrecon -d domain` for zone transfers, SRV, DNSSEC walk), '
+            'dnsx (fast bulk DNS: `dnsx -l /tmp/subdomains.txt -a -resp -silent`)\n'
+            '   - **Windows/AD:** smbclient (`smbclient //IP/share -U user`), sshpass (non-interactive SSH auth), '
+            'enum4linux-ng (`enum4linux-ng -A target -oJ /tmp/enum4linux`), '
+            'netexec/nxc (`nxc smb IP -u user -p pass --shares`, supports SMB/WinRM/LDAP/MSSQL/RDP), '
+            'bloodhound-python (`bloodhound-python -c all -d domain -u user -p pass -ns DC_IP`), '
+            'certipy-ad (`certipy find -u user@domain -p pass -dc-ip IP` for AD-CS ESC1-ESC13), '
+            'ldapdomaindump (`ldapdomaindump -u DOMAIN/user -p pass IP`), '
+            'impacket-* (`impacket-wmiexec`, `impacket-psexec`, `impacket-smbexec`, '
+            '`impacket-secretsdump`, `impacket-GetNPUsers`, `impacket-GetUserSPNs`)\n'
+            '   - **API/GraphQL:** jwt_tool (`jwt_tool TOKEN -M at` for all tests), '
+            'graphql-cop (`graphql-cop -t URL/graphql`), graphqlmap (`graphqlmap -u URL/graphql`)\n'
+            '   - **Secrets:** gitleaks (`gitleaks detect -s /path/to/repo --report-format json`)\n'
+            '   - **Passive recon:** paramspider (`paramspider -d domain`)\n'
+            '   - **DoS/stress:** hping3 (`hping3 -S -p 80 --flood IP`), slowhttptest (`slowhttptest -c 1000 -u URL`)\n'
+            '   - **Tunneling:** ngrok (`ngrok tcp PORT`), chisel (`chisel server -p 8080 --reverse` / `chisel client HOST:8080 R:socks`)\n'
+            '   - **Wordlists (SecLists):** `/usr/share/seclists/Discovery/Web-Content/`:\n'
+            '     - `common.txt` (4750) -- standard web content discovery\n'
+            '     - `big.txt` (20481) -- comprehensive directory list\n'
+            '     - `raft-medium-directories.txt` (29999) -- raft-based enumeration\n'
             '   - **Python libs** (for one-liners via `python3 -c`): '
             'requests, beautifulsoup4, pycryptodome, PyJWT, paramiko, impacket, pwntools\n'
             '   - For multi-line scripts use **execute_code** instead (avoids shell escaping)\n'
-            '   - Do NOT use for: curl, nmap, naabu, nuclei, msfconsole — use their dedicated tools'
+            '   - Do NOT use kali_shell for: curl, httpx, nmap, naabu, nuclei, jsluice, subfinder, '
+            'amass, gau, katana, ffuf, arjun, masscan, wpscan, hydra, msfconsole, playwright '
+            '-- use their dedicated tools (better timeout, output parsing, tool tracking)'
         ),
     },
     "execute_code": {
@@ -231,6 +350,38 @@ TOOL_REGISTRY = {
             '   - Requires WPScan API token for vulnerability data (free: 25 requests/day)\n'
             '   - Key flags: --url TARGET, --enumerate p,t,u,cb, --format json, --api-token TOKEN\n'
             '   - Example: "--url http://example.com --enumerate p,t --format json --no-banner"'
+        ),
+    },
+    "execute_arjun": {
+        "purpose": "HTTP parameter discovery (hidden query/body params)",
+        "when_to_use": "Find hidden parameters on web endpoints before testing for injection vulnerabilities",
+        "args_format": '"args": "arjun arguments without \'arjun\' prefix"',
+        "description": (
+            '**execute_arjun** (HTTP parameter discovery)\n'
+            '   - Brute-forces ~25,000 common parameter names against URLs to find hidden/undocumented params\n'
+            '   - Discovers query (GET), POST body, JSON, and XML parameters\n'
+            '   - Key flags: -u URL, -i urls_file, -m GET|POST|JSON|XML, -oJ output.json, '
+            '--rate-limit N, --stable (WAF evasion), --passive (no active requests)\n'
+            '   - Always use -oJ /tmp/arjun_out.json for structured results\n'
+            '   - Example: "-u http://10.0.0.5/api/search -m POST -oJ /tmp/arjun_out.json"'
+        ),
+    },
+    "execute_ffuf": {
+        "purpose": "Web fuzzing -- directory/vhost/parameter discovery",
+        "when_to_use": "Discover hidden paths, files, directories, virtual hosts, or parameters on web targets",
+        "args_format": '"args": "ffuf arguments without \'ffuf\' prefix"',
+        "description": (
+            '**execute_ffuf** (Web fuzzing -- directory/vhost/parameter discovery)\n'
+            '   - Fast web fuzzer. Place `FUZZ` keyword at the mutation point in URL, header, or body\n'
+            '   - **Wordlists** (pre-installed at `/usr/share/seclists/Discovery/Web-Content/`):\n'
+            '     - `common.txt` (4750 entries -- standard, start here)\n'
+            '     - `big.txt` (20481 entries -- comprehensive)\n'
+            '     - `raft-medium-directories.txt` (29999 entries -- raft-based)\n'
+            '   - Key flags: `-mc` match codes, `-fc` filter codes, `-fs` filter size, '
+            '`-ac` auto-calibrate, `-t` threads, `-rate` req/sec, `-noninteractive` (always include)\n'
+            '   - Dir: `-w .../common.txt -u http://target/FUZZ -mc 200,301,302,403 -ac -noninteractive`\n'
+            '   - Vhost: `-w wordlist -u http://target -H "Host: FUZZ.domain" -fs 0 -ac -noninteractive`\n'
+            '   - Param: `-w wordlist -u "http://target/page?p=FUZZ" -mc all -fs 0 -ac -noninteractive`'
         ),
     },
     "msf_restart": {

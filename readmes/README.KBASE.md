@@ -1051,7 +1051,7 @@ docker logs redamon-agent 2>&1 | grep -i "knowledge\|kb\|faiss"
 
 ```bash
 make kb-rebuild-lite   # or standard/full
-docker compose restart agent
+docker compose build agent && docker compose up -d agent
 ```
 
 ### NVD rate limiting

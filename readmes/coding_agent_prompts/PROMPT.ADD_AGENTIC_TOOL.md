@@ -6,13 +6,13 @@ Integrate **[TOOL_NAME]** into the RedAmon agentic system.
 
 ### Critical Rules
 
-- **Python import safety**: The `agent` container volume-mounts source code (`./agentic:/app`). Adding a new Python `import` that isn't already installed in the container image will **crash-loop** the agent. Before importing any package, verify it exists in `agentic/requirements.txt` or the `agentic/Dockerfile`. If it's missing, add it and rebuild: `docker compose build agent`.
+- **Python import safety**: The `agent` container has source code baked into the Docker image. Adding a new Python `import` that isn't already installed in the container image will **crash-loop** the agent. Before importing any package, verify it exists in `agentic/requirements.txt` or the `agentic/Dockerfile`. If it's missing, add it and rebuild: `docker compose build agent`.
 - **Don't break existing tools**: Adding a new tool must NOT modify the behavior, arguments, or output format of any existing tool. If you change a shared file (e.g., `tools.py`, `project_settings.py`), verify that all existing tools still work after your changes.
-- **Container restart rules**: MCP server code in `mcp/servers/` is volume-mounted and **hot-reloads** — changes are live immediately. But agent Python code in `agentic/` is cached at import time — you MUST run `docker compose restart agent` after any change there. Frontend changes require `docker compose build webapp`.
+- **Container rebuild rules**: MCP server code in `mcp/servers/` is volume-mounted and **hot-reloads** -- changes are live immediately. But agent Python code in `agentic/` is baked into the Docker image -- you MUST run `docker compose build agent && docker compose up -d agent` after any change there. Frontend changes require `docker compose build webapp`.
 - **Build/restart quick reference**:
   - Changed `mcp/kali-sandbox/Dockerfile` → `docker compose build kali-sandbox && docker compose up -d kali-sandbox`
   - Changed `mcp/servers/*.py` → `docker compose restart kali-sandbox`
-  - Changed `agentic/*.py` → `docker compose restart agent`
+  - Changed `agentic/*.py` → `docker compose build agent && docker compose up -d agent`
   - Changed `webapp/prisma/schema.prisma` → `docker compose exec webapp npx prisma db push`
   - Changed `webapp/src/**` → `docker compose build webapp && docker compose up -d webapp`
 
@@ -56,7 +56,7 @@ The tool works well via `kali_shell` / `execute_code`. No dedicated MCP tool or 
 **When to use:**
 - Tool is already in Kali or trivially installable
 - CLI is simple enough that the agent can use it via `kali_shell` without a wrapper
-- 120s `kali_shell` timeout is sufficient
+- 300s `kali_shell` timeout is sufficient
 - No progress streaming needed
 
 **What to change:**
@@ -73,7 +73,7 @@ The tool works well via `kali_shell` / `execute_code`. No dedicated MCP tool or 
 Add a new `@mcp.tool()` function to an existing MCP server (usually `network_recon_server.py`). The tool gets its own name, custom timeout, output parsing, and rich docstring.
 
 **When to use:**
-- Tool needs a custom timeout different from `kali_shell`'s 120s
+- Tool needs a custom timeout different from `kali_shell`'s 300s
 - Tool output benefits from dedicated parsing/cleaning
 - The agent should see a dedicated tool name in the tool list
 - Tool is fire-and-forget (not interactive/stateful)
@@ -351,7 +351,17 @@ For MCP tools that accept an optional API key via CLI flag (tool works without i
 
 - [ ] Run schema push: `docker compose exec webapp npx prisma db push` (NEVER use `prisma migrate`)
 
-- [ ] **Update existing DB rows** — Existing projects won't have the new tool in their `agentToolPhaseMap`. Run a SQL UPDATE via `docker compose exec postgres psql -U redamon -d redamon` to add the new tool entry where it doesn't already exist.
+- [ ] **Update existing DB rows** — Existing projects won't have the new tool in their `agentToolPhaseMap`. The Prisma default only applies to NEW projects. Without this step, the agent will NOT see the tool in existing projects (it won't appear in the prompt's tool_name enum). Run:
+
+```bash
+docker compose exec postgres psql -U redamon -d redamon -c "
+UPDATE projects
+SET agent_tool_phase_map = agent_tool_phase_map::jsonb || '{\"TOOL_NAME\": [\"PHASE1\", \"PHASE2\"]}'::jsonb
+WHERE NOT (agent_tool_phase_map::jsonb ? 'TOOL_NAME');
+"
+```
+
+Replace `TOOL_NAME` with the tool name (e.g. `execute_httpx`) and `PHASE1`, `PHASE2` with the phases from `TOOL_PHASE_MAP` (e.g. `informational`, `exploitation`). Then rebuild the agent: `docker compose build agent && docker compose up -d agent`.
 
 #### Frontend: API Key in UserSettings (Type D or any tool needing API keys)
 
@@ -411,7 +421,7 @@ If the tool is the PRIMARY tool for a new built-in attack skill (like Hydra is f
 
 1. **Build containers**: `docker compose build kali-sandbox` and/or `docker compose build webapp`
 2. **Push schema**: `docker compose exec webapp npx prisma db push`
-3. **Restart services**: `docker compose restart agent kali-sandbox` (agent caches Python modules — restart is mandatory)
+3. **Rebuild & restart services**: `docker compose build agent && docker compose up -d agent kali-sandbox` (agent code is baked into image -- rebuild is mandatory)
 4. **Check Tool Matrix**: Project settings > AI Agent > Tool Matrix — new tool should appear with phase checkboxes
 5. **Check MCP server**: `docker compose logs kali-sandbox` — tool's server should start without errors
 6. **Test execution**: In agent chat, ask it to use the tool. Verify: correct phase availability, confirmation dialog if dangerous, output returned and truncated to `TOOL_OUTPUT_MAX_CHARS`
@@ -513,7 +523,7 @@ For Type B, adding a new `@mcp.tool()` to an existing server means it gets **aut
 
 ```
 Is the tool already in Kali or trivially installable?
-├─ YES → Is kali_shell (120s timeout, no custom parsing) sufficient?
+├─ YES → Is kali_shell (300s timeout, no custom parsing) sufficient?
 │   ├─ YES → Type A (Dockerfile + update kali_shell description)
 │   └─ NO → Is it fire-and-forget (not stateful)?
 │       ├─ YES → Type B (new @mcp.tool() on existing server)

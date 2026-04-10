@@ -1139,9 +1139,9 @@ export default function SettingsPage() {
 
             <SecretField
               label="Censys API Token"
-              hint="Censys Platform personal access token — used by Recon Pipeline, AI Agent, and Uncover engine"
+              hint="Censys Platform personal access token — used by Recon Pipeline and Uncover engine"
               signupUrl="https://accounts.censys.io/settings/personal-access-tokens"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.censysApiToken}
               visible={!!visibleFields.censysApiToken}
               onToggle={() => toggleFieldVisibility('censysApiToken')}
@@ -1151,7 +1151,7 @@ export default function SettingsPage() {
               label="Censys Organization ID"
               hint="Censys Organization ID — paired with API Token above. Found on your Censys account page"
               signupUrl="https://accounts.censys.io/settings/personal-access-tokens"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.censysOrgId}
               visible={!!visibleFields.censysOrgId}
               onToggle={() => toggleFieldVisibility('censysOrgId')}
@@ -1161,7 +1161,7 @@ export default function SettingsPage() {
               label="Censys Personal API Token"
               hint="Personal Access Token from your Censys account — alternative to API ID + Secret. Takes precedence when both are set."
               signupUrl="https://accounts.censys.io/settings/personal-access-tokens"
-              badges={['AI Agent', 'Recon Pipeline']}
+              badges={['Recon Pipeline']}
               value={settings.censysApiToken}
               visible={!!visibleFields.censysApiToken}
               onToggle={() => toggleFieldVisibility('censysApiToken')}
@@ -1171,7 +1171,7 @@ export default function SettingsPage() {
               label="FOFA API Key"
               hint="FOFA cyberspace search — asset discovery by banner, certificate, domain. Key format: email:key"
               signupUrl="https://en.fofa.info/"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.fofaApiKey}
               visible={!!visibleFields.fofaApiKey}
               onToggle={() => toggleFieldVisibility('fofaApiKey')}
@@ -1183,7 +1183,7 @@ export default function SettingsPage() {
               label="AlienVault OTX Key"
               hint="Open Threat Exchange — threat intelligence pulses, malware indicators, passive DNS, reputation scoring"
               signupUrl="https://otx.alienvault.com/settings"
-              badges={['AI Agent', 'Recon Pipeline']}
+              badges={['Recon Pipeline']}
               value={settings.otxApiKey}
               visible={!!visibleFields.otxApiKey}
               onToggle={() => toggleFieldVisibility('otxApiKey')}
@@ -1195,7 +1195,7 @@ export default function SettingsPage() {
               label="Netlas API Key"
               hint="Netlas.io — internet-wide scan data with banners, certificates, and WHOIS info"
               signupUrl="https://app.netlas.io/profile/"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.netlasApiKey}
               visible={!!visibleFields.netlasApiKey}
               onToggle={() => toggleFieldVisibility('netlasApiKey')}
@@ -1207,7 +1207,7 @@ export default function SettingsPage() {
               label="VirusTotal API Key"
               hint="Multi-engine reputation for IPs and domains. Free tier: 4 lookups/min, 500/day"
               signupUrl="https://www.virustotal.com/gui/my-apikey"
-              badges={['AI Agent', 'Recon Pipeline']}
+              badges={['Recon Pipeline']}
               value={settings.virusTotalApiKey}
               visible={!!visibleFields.virusTotalApiKey}
               onToggle={() => toggleFieldVisibility('virusTotalApiKey')}
@@ -1219,7 +1219,7 @@ export default function SettingsPage() {
               label="ZoomEye API Key"
               hint="ZoomEye cyberspace search — host/device discovery with port, banner, and geo data"
               signupUrl="https://www.zoomeye.ai/profile"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.zoomEyeApiKey}
               visible={!!visibleFields.zoomEyeApiKey}
               onToggle={() => toggleFieldVisibility('zoomEyeApiKey')}
@@ -1231,7 +1231,7 @@ export default function SettingsPage() {
               label="Criminal IP API Key"
               hint="AI-powered threat intelligence — IP/domain risk scoring, vulnerability detection, proxy/VPN/Tor identification"
               signupUrl="https://search.criminalip.io/mypage/information"
-              badges={['AI Agent', 'Recon Pipeline', 'Standalone + Uncover']}
+              badges={['Recon Pipeline', 'Standalone + Uncover']}
               value={settings.criminalIpApiKey}
               visible={!!visibleFields.criminalIpApiKey}
               onToggle={() => toggleFieldVisibility('criminalIpApiKey')}

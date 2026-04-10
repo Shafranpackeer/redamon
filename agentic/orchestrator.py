@@ -263,6 +263,12 @@ class AgentOrchestrator:
             self.tool_executor.set_wpscan_api_token(wpscan_token)
             logger.info("WPScan API token configured for vulnerability enrichment")
 
+        # URLScan API key (injected silently into execute_gau config)
+        urlscan_key = user_settings.get('urlscanApiKey', '')
+        if urlscan_key and self.tool_executor:
+            self.tool_executor.set_gau_urlscan_api_key(urlscan_key)
+            logger.info("URLScan API key configured for GAU enrichment")
+
         # Google dork (SerpAPI)
         serp_api_key = user_settings.get('serpApiKey', '')
         if self._google_dork_manager and self.tool_executor:

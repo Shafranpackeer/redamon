@@ -106,7 +106,7 @@ Make your changes. Verify they work:
 
 - **webapp changes:** `docker compose build webapp && docker compose up -d webapp`
 - **recon-orchestrator changes:** code is volume-mounted — changes are instant
-- **agent changes:** code is volume-mounted but Python caches modules — run `docker compose restart agent`
+- **agent changes:** code is baked into the image — run `docker compose build agent && docker compose up -d agent`
 - **Prisma schema changes:** `docker compose exec webapp npx prisma db push`
 
 ### Step 4 — Submit your PR
@@ -288,7 +288,7 @@ RedAmon runs as a Docker Compose stack. Here's what each service does and how ch
 |---------|---------------------|
 | webapp | `docker compose build webapp && docker compose up -d webapp` |
 | recon-orchestrator | Volume-mounted — changes are instant |
-| agent | Volume-mounted but Python caches modules — `docker compose restart agent` |
+| agent | Code baked into image — `docker compose build agent && docker compose up -d agent` |
 | Prisma schema | `docker compose exec webapp npx prisma db push` |
 
 ### Branching Strategy

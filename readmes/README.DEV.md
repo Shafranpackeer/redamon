@@ -642,7 +642,7 @@ This is the most important table for day-to-day development. It tells you exactl
 |---|---|---|
 | `webapp/src/**` | **Nothing** — automatic | Next.js HMR detects changes instantly |
 | `webapp/server_actions/**` | **Nothing** — automatic | Next.js HMR |
-| `agentic/**/*.py` | `docker compose restart agent` | Python caches modules at import time; restart forces re-import |
+| `agentic/**/*.py` | `docker compose build agent && docker compose up -d agent` | Source code is baked into the image; rebuild is required |
 | `recon_orchestrator/**/*.py` | **Nothing** — automatic | Uvicorn watches the mounted source directory |
 | `recon/**/*.py` | **Nothing** — automatic | Each recon run spawns a new container that picks up the volume-mounted code |
 | `mcp/servers/**/*.py` | `docker compose restart kali-sandbox` | MCP servers cache modules at startup |
@@ -654,7 +654,7 @@ This is the most important table for day-to-day development. It tells you exactl
 | Any `Dockerfile` | `docker compose build <service> && docker compose up -d <service>` | Dockerfile changes always need rebuild |
 | `docker-compose.yml` | `docker compose up -d` | Compose detects config changes and recreates affected containers |
 | `webapp/prisma/schema.prisma` | `docker compose exec webapp npx prisma db push` | Push schema changes to PostgreSQL |
-| New default value | Update ALL 4 layers + restart agent & webapp | See [checklist](#61-adding-a-new-project-setting) |
+| New default value | Update ALL 4 layers + rebuild agent & webapp | See [checklist](#61-adding-a-new-project-setting) |
 
 ### 5.4 Common Commands
 
@@ -689,8 +689,8 @@ docker compose exec postgres psql -U redamon -c "SELECT * FROM \"Project\" LIMIT
 
 # ─── Service Management ─────────────────────────────────────────────────
 docker compose ps                               # Check all container statuses
-docker compose restart agent                    # Restart single service (no rebuild)
-docker compose restart agent webapp             # Restart multiple services
+docker compose build agent && docker compose up -d agent  # Rebuild agent (code baked into image)
+docker compose restart kali-sandbox              # Restart kali-sandbox (code volume-mounted)
 docker compose down && docker compose up -d     # Full restart (preserves data)
 docker compose down -v && docker compose up -d  # DANGER: deletes ALL data (volumes)
 ```
@@ -702,7 +702,7 @@ docker compose down -v && docker compose up -d  # DANGER: deletes ALL data (volu
 3. **Never add Python imports** to `agentic/` without ensuring the package is listed in `requirements.txt` and the image has been rebuilt — Otherwise the container will crash-loop on startup.
 4. **LLM API keys are per-user** — They are configured in the webapp UI at `/settings` and stored in PostgreSQL. They are NOT environment variables.
 5. **Docker timestamps** use RFC3339Nano format with nanoseconds — If you parse them in Python, truncate to 6 fractional digits before passing to `datetime.fromisoformat()`.
-6. **Source code is volume-mounted** — The `agentic/` and `recon_orchestrator/` directories are mounted into their containers at `/app`. You edit files on the host and the container sees changes immediately. But Python still caches modules, so **always restart the agent** after editing `.py` files in `agentic/`.
+6. **Agent source code is baked into the image** -- Unlike `recon_orchestrator/` (which is volume-mounted), `agentic/` source code is copied into the Docker image at build time. You MUST rebuild the agent image after editing `.py` files in `agentic/`: `docker compose build agent && docker compose up -d agent`.
 
 ### 5.6 AI-Assisted Coding
 
@@ -741,20 +741,20 @@ Other capable models (GPT-5, Gemini 2.5 Pro) can also work, but Opus 4.6 has bee
    docker compose exec postgres psql -U redamon -c \
      "UPDATE \"Project\" SET \"newField\" = 'default_value' WHERE \"newField\" IS NULL;"
    ```
-6. Restart affected services:
+6. Rebuild affected services:
    ```bash
-   docker compose restart agent webapp
+   docker compose build agent && docker compose up -d agent webapp
    ```
 
 ### 6.2 Adding a New Agent Tool
 
 1. Define the tool schema (name, description, parameters) in `agentic/prompts/tool_registry.py`.
-2. Implement the tool manager — either add to `agentic/tools.py` or create a dedicated file.
+2. Implement the tool manager -- either add to `agentic/tools.py` or create a dedicated file.
 3. Register the tool in the orchestrator's tool binding (in `orchestrator.py` or the relevant node file).
 4. If the tool should only be available in certain phases, add it to the phase-tool mapping in `prompts/base.py`.
-5. Restart:
+5. Rebuild:
    ```bash
-   docker compose restart agent
+   docker compose build agent && docker compose up -d agent
    ```
 
 ### 6.3 Adding a New Webapp API Route
