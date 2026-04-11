@@ -1,13 +1,15 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Save, X, Loader2, AlertTriangle, Download, ShieldAlert, Zap, Bookmark, FolderOpen, List, GitBranch } from 'lucide-react'
+import { Save, X, Loader2, Download, ShieldAlert, Zap, Bookmark, FolderOpen, List, GitBranch, Play } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import type { Project } from '@prisma/client'
 import { validateProjectForm } from '@/lib/validation'
 import { isHardBlockedDomain } from '@/lib/hard-guardrail'
 import { useProject } from '@/providers/ProjectProvider'
 import { useAlertModal, useToast } from '@/components/ui'
+import type { PartialReconParams } from '@/lib/recon-types'
 import styles from './ProjectForm.module.css'
 
 // Import sections
@@ -42,6 +44,7 @@ import { CypherFixSettingsSection } from './sections/CypherFixSettingsSection'
 import { RoeSection } from './sections/RoeSection'
 import { OsintEnrichmentSection } from './sections/OsintEnrichmentSection'
 import { JsReconSection } from './sections/JsReconSection'
+import { PartialReconModal } from './WorkflowView/PartialReconModal'
 import { ReconPresetModal } from './ReconPresetModal'
 import { SavePresetModal } from './SavePresetModal'
 import { UserPresetDrawer } from './UserPresetDrawer'
@@ -53,19 +56,6 @@ const WorkflowView = dynamic(
 )
 
 type ProjectFormData = Omit<Project, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'user'>
-
-interface ConflictResult {
-  hasConflict: boolean
-  conflictType: 'full_scan_exists' | 'full_scan_requested' | 'subdomain_overlap' | null
-  conflictingProject: {
-    id: string
-    name: string
-    targetDomain: string
-    subdomainList: string[]
-  } | null
-  overlappingSubdomains: string[]
-  message: string | null
-}
 
 interface ProjectFormProps {
   initialData?: Partial<ProjectFormData> & { id?: string }
@@ -172,6 +162,7 @@ export function ProjectForm({
 }: ProjectFormProps) {
   const { alertError, alertWarning } = useAlertModal()
   const toast = useToast()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabId>('target')
   const [viewMode, setViewMode] = useState<'tabs' | 'workflow'>('workflow')
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(mode === 'create')
@@ -179,6 +170,10 @@ export function ProjectForm({
     ...MINIMAL_DEFAULTS,
     ...initialData
   } as ProjectFormData))
+
+  // Partial Recon
+  const [partialReconToolId, setPartialReconToolId] = useState<string | null>(null)
+  const [isPartialReconStarting, setIsPartialReconStarting] = useState(false)
 
   // Recon Preset
   const [isPresetModalOpen, setIsPresetModalOpen] = useState(false)
@@ -193,9 +188,6 @@ export function ProjectForm({
   const [isSavePresetModalOpen, setIsSavePresetModalOpen] = useState(false)
   const [isUserPresetDrawerOpen, setIsUserPresetDrawerOpen] = useState(false)
 
-  // Domain conflict checking
-  const [conflict, setConflict] = useState<ConflictResult | null>(null)
-  const [isCheckingConflict, setIsCheckingConflict] = useState(false)
 
   // Guardrail block modal
   const [guardrailError, setGuardrailError] = useState<string | null>(null)
@@ -225,52 +217,6 @@ export function ProjectForm({
   )
   const projectId =
     projectIdFromRoute ?? (initialData as { id?: string } | undefined)?.id ?? (mode === 'create' ? generatedId : undefined)
-
-  // Check for domain conflicts (IP mode skips — tenant-scoped constraints allow overlap)
-  const checkConflict = useCallback(async () => {
-    // No conflict check needed for IP mode
-    if (formData.ipMode) {
-      setConflict(null)
-      return
-    }
-
-    if (!(formData.targetDomain || '').trim()) {
-      setConflict(null)
-      return
-    }
-
-    setIsCheckingConflict(true)
-    try {
-      const response = await fetch('/api/projects/check-conflict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          targetDomain: formData.targetDomain || '',
-          subdomainList: formData.subdomainList || [],
-          ipMode: false,
-          excludeProjectId: mode === 'edit' ? projectId : undefined,
-        }),
-      })
-
-      if (response.ok) {
-        const result: ConflictResult = await response.json()
-        setConflict(result.hasConflict ? result : null)
-      }
-    } catch (error) {
-      console.error('Failed to check conflict:', error)
-    } finally {
-      setIsCheckingConflict(false)
-    }
-  }, [formData.targetDomain, formData.subdomainList, formData.ipMode, mode, projectId])
-
-  // Debounced conflict check when form data changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      checkConflict()
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [checkConflict])
 
   // Fetch defaults from backend on mount (only for create mode)
   useEffect(() => {
@@ -342,12 +288,6 @@ export function ProjectForm({
       }
     }
 
-    // Block submission if there's a conflict
-    if (conflict?.hasConflict) {
-      alertError('Cannot save project: ' + conflict.message)
-      return
-    }
-
     try {
       // Attach roeFile and pre-generated ID to form data for submission
       const submitData = {
@@ -393,10 +333,6 @@ export function ProjectForm({
         return
       }
     }
-    if (conflict?.hasConflict) {
-      alertError('Cannot save project: ' + conflict.message)
-      return
-    }
     try {
       const submitData = {
         ...formData,
@@ -419,8 +355,33 @@ export function ProjectForm({
     }
   }
 
+  // Partial recon confirm handler
+  const handlePartialReconConfirm = useCallback(async (params: PartialReconParams) => {
+    if (!projectId) return
+    setIsPartialReconStarting(true)
+    try {
+      const response = await fetch(`/api/recon/${projectId}/partial`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        toast.error(data.error || 'Failed to start partial recon')
+        return
+      }
+      setPartialReconToolId(null)
+      toast.success('Partial recon started')
+      router.push('/graph')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to start partial recon')
+    } finally {
+      setIsPartialReconStarting(false)
+    }
+  }, [projectId, toast, router])
+
   // Determine if form can be submitted
-  const canSubmit = !isSubmitting && !isLoadingDefaults && !conflict?.hasConflict && !isCheckingConflict
+  const canSubmit = !isSubmitting && !isLoadingDefaults
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
@@ -484,11 +445,6 @@ export function ProjectForm({
                 <Loader2 size={14} className={styles.spinner} />
                 Loading...
               </>
-            ) : isCheckingConflict ? (
-              <>
-                <Loader2 size={14} className={styles.spinner} />
-                Checking...
-              </>
             ) : (
               <>
                 <Save size={14} />
@@ -498,25 +454,6 @@ export function ProjectForm({
           </button>
         </div>
       </div>
-
-      {/* Domain conflict warning banner */}
-      {conflict?.hasConflict && (
-        <div className={styles.conflictBanner}>
-          <AlertTriangle size={20} className={styles.conflictIcon} />
-          <div className={styles.conflictContent}>
-            <div className={styles.conflictTitle}>Domain Conflict Detected</div>
-            <div className={styles.conflictMessage}>{conflict.message}</div>
-            {conflict.conflictingProject && (
-              <div className={styles.conflictProject}>
-                Conflicting project: <strong>{conflict.conflictingProject.name}</strong>
-                {conflict.overlappingSubdomains.length > 0 && (
-                  <> (subdomains: {conflict.overlappingSubdomains.join(', ')})</>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {isLoadingDefaults ? (
         <div className={styles.loadingContainer}>
@@ -617,6 +554,7 @@ export function ProjectForm({
                 projectId={projectId}
                 mode={mode}
                 onSave={onSaveAndStay ? handleSaveAndStay : undefined}
+                onRunPartial={(toolId) => setPartialReconToolId(toolId)}
               />
             )}
 
@@ -640,6 +578,29 @@ export function ProjectForm({
 
         {activeTab === 'discovery' && viewMode === 'tabs' && (
           <>
+            {mode === 'edit' && projectId && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPartialReconToolId('SubdomainDiscovery')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    color: '#22c55e',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                  }}
+                >
+                  <Play size={12} /> Run Subdomain Discovery
+                </button>
+              </div>
+            )}
             <SubdomainDiscoverySection data={formData} updateField={updateField} />
             <ShodanSection data={formData} updateField={updateField} />
             <UrlscanSection data={formData} updateField={updateField} />
@@ -749,6 +710,18 @@ export function ProjectForm({
         onClose={() => setIsUserPresetDrawerOpen(false)}
         onLoad={handleLoadUserPreset}
         userId={userId}
+      />
+
+      {/* Partial Recon Config Modal */}
+      <PartialReconModal
+        isOpen={!!partialReconToolId}
+        toolId={partialReconToolId}
+        onClose={() => setPartialReconToolId(null)}
+        onConfirm={handlePartialReconConfirm}
+        projectId={projectId}
+        targetDomain={formData.targetDomain || ''}
+        subdomainPrefixes={formData.subdomainList as string[] || []}
+        isStarting={isPartialReconStarting}
       />
 
       {/* Guardrail block modal */}

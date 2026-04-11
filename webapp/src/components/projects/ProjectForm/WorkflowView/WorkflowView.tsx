@@ -15,6 +15,9 @@ import { DataNode } from './DataNode'
 import { InputNode } from './InputNode'
 import { CustomEdge } from './CustomEdge'
 import { WorkflowNodeModal } from './WorkflowNodeModal'
+import { NodeListOverlay } from './NodeListOverlay'
+import { useDataNodeCounts } from './useToolNodeCounts'
+import { PARTIAL_RECON_SUPPORTED_TOOLS } from '@/lib/recon-types'
 import styles from './WorkflowView.module.css'
 
 type FormData = Omit<Project, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'user'>
@@ -25,6 +28,7 @@ interface WorkflowViewProps {
   projectId?: string
   mode: 'create' | 'edit'
   onSave?: () => Promise<void>
+  onRunPartial?: (toolId: string) => void
 }
 
 const nodeTypes = {
@@ -37,13 +41,15 @@ const edgeTypes = {
   custom: CustomEdge,
 }
 
-export function WorkflowView({ formData, updateField, projectId, mode, onSave }: WorkflowViewProps) {
+export function WorkflowView({ formData, updateField, projectId, mode, onSave, onRunPartial }: WorkflowViewProps) {
   const [selectedToolId, setSelectedToolId] = useState<string | null>(mode === 'create' ? 'input' : null)
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null)
+  const [badgeNodeType, setBadgeNodeType] = useState<string | null>(null)
   const { resolvedTheme } = useTheme()
   const isLight = resolvedTheme === 'light'
 
   const { nodes: rawNodes, edges: graphEdges } = useWorkflowGraph(formData as unknown as Record<string, unknown>)
+  const { dataNodeCounts } = useDataNodeCounts(projectId)
 
   // Inject callbacks into tool node data
   const handleToggle = useCallback((field: string, value: boolean) => {
@@ -56,6 +62,10 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setHighlightedNodeId(prev => prev === nodeId ? null : nodeId)
+  }, [])
+
+  const handleBadgeClick = useCallback((nodeType: string) => {
+    setBadgeNodeType(nodeType)
   }, [])
 
   const handlePaneClick = useCallback(() => {
@@ -88,12 +98,15 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
       const dimmed = hasHighlight && !isHighlighted
 
       if (node.type === 'toolNode') {
+        const toolId = (node.data as { toolId?: string }).toolId || ''
         return {
           ...node,
           data: {
             ...node.data,
             onToggle: handleToggle,
             onOpenSettings: handleOpenSettings,
+            onRunPartial: mode === 'edit' && projectId ? onRunPartial : undefined,
+            partialReconSupported: PARTIAL_RECON_SUPPORTED_TOOLS.has(toolId),
             onNodeClick: handleNodeClick,
             highlighted: isHighlighted,
             dimmed,
@@ -101,6 +114,7 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
         }
       }
       if (node.type === 'dataNode') {
+        const dataNodeType = (node.data as { nodeType?: string }).nodeType || ''
         return {
           ...node,
           data: {
@@ -108,6 +122,8 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
             onNodeClick: handleNodeClick,
             highlighted: isHighlighted,
             dimmed,
+            nodeCount: dataNodeCounts.get(dataNodeType)?.count,
+            onBadgeClick: projectId ? handleBadgeClick : undefined,
           },
         }
       }
@@ -123,7 +139,7 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
         },
       }
     })
-  }, [rawNodes, handleToggle, handleOpenSettings, handleNodeClick, connectedNodeIds, hasHighlight])
+  }, [rawNodes, handleToggle, handleOpenSettings, onRunPartial, handleNodeClick, connectedNodeIds, hasHighlight, mode, projectId, dataNodeCounts, handleBadgeClick])
 
   const edges = useMemo(() => {
     if (!hasHighlight) return graphEdges
@@ -146,6 +162,12 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
       {/* React Flow base CSS is not loaded by Turbopack from node_modules.
           Inject the critical rules for edges SVG rendering. */}
       <style dangerouslySetInnerHTML={{ __html: `
+        .react-flow {
+          background: #0a0a0a !important;
+        }
+        [data-theme="light"] .react-flow {
+          background: #ffffff !important;
+        }
         .react-flow__edges svg {
           overflow: visible !important;
           position: absolute !important;
@@ -223,6 +245,16 @@ export function WorkflowView({ formData, updateField, projectId, mode, onSave }:
         projectId={projectId}
         mode={mode}
       />
+
+      {badgeNodeType && (
+        <NodeListOverlay
+          isOpen={true}
+          onClose={() => setBadgeNodeType(null)}
+          toolLabel={badgeNodeType}
+          nodes={dataNodeCounts.get(badgeNodeType)?.nodes ?? []}
+        />
+      )}
+
     </div>
   )
 }

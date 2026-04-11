@@ -57,7 +57,7 @@ venv/
 ENV/
 env/
 .venv/
-.redamon-venv/
+knowledge_base/.redamon-venv/
 .env.local
 
 # Environment variables / Secrets

@@ -1023,6 +1023,45 @@ FOR (ed:ExternalDomain) ON (ed.user_id, ed.project_id);
 
 ---
 
+### UserInput
+
+User-provided values for partial recon runs. When a user triggers a partial recon (e.g., subdomain discovery) and adds custom input values, a UserInput node is created to track the provenance of those inputs and the results they produced.
+
+**Created by:** `partial_recon.py` (partial recon pipeline)
+
+**Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | String (UUID) | Unique identifier (UNIQUE constraint) |
+| `input_type` | String | Type of input: "subdomains", "ips", "urls", "domains" |
+| `values` | String[] | User-provided values |
+| `tool_id` | String | Tool that was run (e.g., "SubdomainDiscovery") |
+| `dedup_enabled` | Boolean | Whether deduplication was enabled for this run |
+| `source` | String | Always "user" |
+| `status` | String | "running", "completed", "error" |
+| `stats` | String | JSON-encoded run statistics |
+| `created_at` | DateTime | When the partial recon was started |
+| `completed_at` | DateTime | When it finished (null if still running) |
+
+**Constraints:**
+```cypher
+CREATE CONSTRAINT userinput_unique IF NOT EXISTS
+FOR (ui:UserInput) REQUIRE (ui.id) IS UNIQUE;
+
+CREATE INDEX idx_userinput_tenant IF NOT EXISTS
+FOR (ui:UserInput) ON (ui.user_id, ui.project_id);
+```
+
+**Relationships:**
+```cypher
+(Domain)-[:HAS_USER_INPUT]->(UserInput)    -- Domain has user-provided partial recon input
+(UserInput)-[:PRODUCED]->(Subdomain)       -- Partial recon run produced this subdomain
+(UserInput)-[:PRODUCED]->(IP)              -- Partial recon run produced this IP
+```
+
+---
+
 ### Secret
 
 Secrets discovered in live web resources (JavaScript files, configuration files, etc.) during reconnaissance. This is a **generic, source-agnostic** node: jsluice populates it now, but any future secret discovery tool can create the same node type.
@@ -1166,6 +1205,9 @@ FOR (m:Malware) ON (m.user_id, m.project_id);
 // OTX threat intelligence
 (Domain)-[:APPEARS_IN_PULSE]->(ThreatPulse)
 (Domain)-[:ASSOCIATED_WITH_MALWARE]->(Malware)
+
+// Partial recon user inputs
+(Domain)-[:HAS_USER_INPUT]->(UserInput)
 ```
 
 ---
@@ -1178,6 +1220,16 @@ FOR (m:Malware) ON (m.user_id, m.project_id);
 
 // Subdomain has DNS records
 (Subdomain)-[:HAS_DNS_RECORD]->(DNSRecord)
+```
+
+---
+
+### UserInput Relationships
+
+```cypher
+// Partial recon run produced subdomains and IPs
+(UserInput)-[:PRODUCED]->(Subdomain)
+(UserInput)-[:PRODUCED]->(IP)
 ```
 
 ---

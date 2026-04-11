@@ -3,7 +3,8 @@
 import { Bot, Play, Download, Loader2, Terminal, Shield, Github, Target, Zap, MessageSquare, Pause, Square, ShieldAlert } from 'lucide-react'
 import { StealthIcon } from '@/components/icons/StealthIcon'
 import { Toggle } from '@/components/ui'
-import type { ReconStatus, GvmStatus, GithubHuntStatus, TrufflehogStatus } from '@/lib/recon-types'
+import type { ReconStatus, GvmStatus, GithubHuntStatus, TrufflehogStatus, PartialReconStatus } from '@/lib/recon-types'
+import { WORKFLOW_TOOLS } from '@/components/projects/ProjectForm/WorkflowView/workflowDefinition'
 import styles from './GraphToolbar.module.css'
 
 interface GraphToolbarProps {
@@ -58,6 +59,12 @@ interface GraphToolbarProps {
   trufflehogStatus?: TrufflehogStatus
   hasTrufflehogData?: boolean
   isTrufflehogLogsOpen?: boolean
+  // Partial Recon props
+  partialReconStatus?: PartialReconStatus
+  partialReconToolId?: string
+  isPartialReconLogsOpen?: boolean
+  onStopPartialRecon?: () => void
+  onTogglePartialReconLogs?: () => void
   // Other Scans modal
   onToggleOtherScansModal?: () => void
   // Stealth mode
@@ -134,6 +141,12 @@ export function GraphToolbar({
   trufflehogStatus = 'idle',
   hasTrufflehogData = false,
   isTrufflehogLogsOpen = false,
+  // Partial Recon props
+  partialReconStatus = 'idle',
+  partialReconToolId = '',
+  isPartialReconLogsOpen = false,
+  onStopPartialRecon,
+  onTogglePartialReconLogs,
   // Other Scans modal
   onToggleOtherScansModal,
   // Stealth mode
@@ -169,6 +182,10 @@ export function GraphToolbar({
   const isTrufflehogRunning = isTrufflehogBusy || isTrufflehogStopping
   const isTrufflehogPaused = trufflehogStatus === 'paused'
   const isTrufflehogActive = isTrufflehogRunning || isTrufflehogPaused
+  const isPartialReconBusy = partialReconStatus === 'running' || partialReconStatus === 'starting'
+  const isPartialReconStopping = partialReconStatus === 'stopping'
+  const isPartialReconRunning = isPartialReconBusy || isPartialReconStopping
+  const isPartialReconActive = isPartialReconRunning
 
   // Agent status derived values
   const runningAgent = agentConversations.find(c => c.agentRunning)
@@ -263,8 +280,8 @@ export function GraphToolbar({
               <button
                 className={`${styles.reconButton} ${isReconActive ? styles.reconButtonActive : ''}`}
                 onClick={isReconPaused ? onResumeRecon : onStartRecon}
-                disabled={isReconRunning}
-                title={isReconStopping ? 'Stopping...' : isReconRunning ? 'Recon in progress...' : isReconPaused ? 'Resume Recon' : 'Start Reconnaissance'}
+                disabled={isReconRunning || isPartialReconRunning}
+                title={isPartialReconRunning ? 'Partial recon is running -- stop it first' : isReconStopping ? 'Stopping...' : isReconRunning ? 'Recon in progress...' : isReconPaused ? 'Resume Recon' : 'Start Reconnaissance'}
               >
                 {isReconRunning ? (
                   <Loader2 size={14} className={styles.spinner} />
@@ -314,6 +331,35 @@ export function GraphToolbar({
                 <Download size={14} />
               </button>
             </div>
+
+            {/* Partial Recon Badge */}
+            {isPartialReconActive && (
+              <div className={styles.actionGroup}>
+                <span className={styles.partialReconBadge}>
+                  {isPartialReconBusy ? (
+                    <Loader2 size={12} className={styles.spinner} />
+                  ) : null}
+                  <span>Partial: {WORKFLOW_TOOLS.find(t => t.id === partialReconToolId)?.label || partialReconToolId || 'Running'}</span>
+                </span>
+
+                <button
+                  className={styles.stopButton}
+                  onClick={onStopPartialRecon}
+                  disabled={isPartialReconStopping}
+                  title="Stop Partial Recon"
+                >
+                  <Square size={14} />
+                </button>
+
+                <button
+                  className={`${styles.logsButton} ${isPartialReconLogsOpen ? styles.logsButtonActive : ''}`}
+                  onClick={onTogglePartialReconLogs}
+                  title="View Partial Recon Logs"
+                >
+                  <Terminal size={14} />
+                </button>
+              </div>
+            )}
 
             {/* GVM Scan Actions */}
             <div className={styles.actionGroup}>

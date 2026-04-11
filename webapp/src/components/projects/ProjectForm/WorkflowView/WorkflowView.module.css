@@ -4,8 +4,12 @@
   flex: 1;
   min-height: 500px;
   width: 100%;
-  background: var(--bg-tertiary);
+  background: #0a0a0a;
   border-radius: var(--radius-md);
+}
+
+:global([data-theme="light"]) .canvas {
+  background: var(--bg-tertiary);
 }
 
 /*
@@ -58,7 +62,8 @@
 /* ---- Tool Node ---- */
 
 .toolNode {
-  background: var(--bg-secondary);
+  position: relative;
+  background: #323640;
   border: 1px solid var(--border-default);
   border-left: 3px solid #6b7280;
   border-radius: var(--radius-md);
@@ -71,7 +76,7 @@
 
 .toolNode:hover {
   border-color: var(--border-active);
-  background: var(--bg-tertiary);
+  background: #3a3f4a;
 }
 
 .toolNodeDisabled {
@@ -88,7 +93,12 @@
 }
 
 :global([data-theme="light"]) .toolNode {
+  background: #d9dce1;
   border-left-color: #9ca3af;
+}
+
+:global([data-theme="light"]) .toolNode:hover {
+  background: #cfd3d9;
 }
 
 .toolNodeHighlighted {
@@ -155,6 +165,30 @@
   gap: 4px;
 }
 
+.partialReconPlay {
+  position: absolute;
+  bottom: 9px;
+  right: 11px;
+  color: #4ade80;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s, transform 0.15s;
+}
+
+.partialReconPlay:hover {
+  opacity: 1;
+  color: #86efac;
+  transform: scale(1.2);
+}
+
+:global([data-theme="light"]) .partialReconPlay {
+  color: #16a34a;
+}
+
+:global([data-theme="light"]) .partialReconPlay:hover {
+  color: #15803d;
+}
+
 .badgeActive {
   font-size: 8px;
   font-weight: 600;
@@ -187,6 +221,35 @@
   color: #16a34a;
 }
 
+/* Node count badge (on data nodes) */
+
+.nodeCountBadge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: background 0.15s;
+  user-select: none;
+  margin-left: 4px;
+  line-height: 1.4;
+}
+
+.nodeCountBadge:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+:global([data-theme="light"]) .nodeCountBadge {
+  background: rgba(0, 0, 0, 0.08);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+:global([data-theme="light"]) .nodeCountBadge:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
 /* Mini toggle */
 
 .toolToggle {
@@ -195,7 +258,7 @@
   height: 14px;
   border-radius: 7px;
   border: none;
-  background: #374151;
+  background: #4b5563;
   cursor: pointer;
   padding: 0;
   transition: background 0.15s;
@@ -205,11 +268,15 @@
 }
 
 :global([data-theme="light"]) .toolToggle {
-  background: #d1d5db;
+  background: #9ca3af;
 }
 
 .toolToggleOn {
   background: #22c55e;
+}
+
+:global([data-theme="light"]) .toolToggleOn {
+  background: #16a34a;
 }
 
 .toolToggleThumb {

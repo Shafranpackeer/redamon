@@ -15,15 +15,22 @@ interface DataNodeData {
   onNodeClick?: (nodeId: string) => void
   highlighted?: boolean
   dimmed?: boolean
+  nodeCount?: number
+  onBadgeClick?: (nodeType: string) => void
 }
 
 function DataNodeComponent({ data }: NodeProps) {
-  const { nodeType, isUniversal, status, color, producers, consumers, onNodeClick, highlighted, dimmed } = data as unknown as DataNodeData
+  const { nodeType, isUniversal, status, color, producers, consumers, onNodeClick, highlighted, dimmed, nodeCount, onBadgeClick } = data as unknown as DataNodeData
 
   const tooltipLines = []
   if (producers.length > 0) tooltipLines.push(`Produced by: ${producers.join(', ')}`)
   if (consumers.length > 0) tooltipLines.push(`Consumed by: ${consumers.join(', ')}`)
   const tooltip = tooltipLines.join('\n')
+
+  const handleBadgeClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onBadgeClick?.(nodeType)
+  }, [onBadgeClick, nodeType])
 
   const handleClick = useCallback(() => {
     onNodeClick?.(`data-${nodeType}`)
@@ -49,6 +56,12 @@ function DataNodeComponent({ data }: NodeProps) {
       >
         {nodeType}
       </span>
+
+      {nodeCount != null && nodeCount > 0 && (
+        <span className={styles.nodeCountBadge} onClick={handleBadgeClick}>
+          {nodeCount}
+        </span>
+      )}
 
       <Handle type="source" position={Position.Right} className={styles.handleSmall} />
     </div>

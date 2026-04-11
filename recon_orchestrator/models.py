@@ -199,3 +199,42 @@ class TrufflehogLogEvent(BaseModel):
     is_phase_start: bool = False
     is_phase_end: bool = False
     level: str = "info"
+
+
+# =============================================================================
+# Partial Recon Models
+# =============================================================================
+
+
+class PartialReconStatus(str, Enum):
+    """Status of a partial recon process"""
+    IDLE = "idle"
+    STARTING = "starting"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    ERROR = "error"
+    STOPPING = "stopping"
+
+
+class PartialReconStartRequest(BaseModel):
+    """Request to start a partial recon run for a single tool"""
+    project_id: str
+    user_id: str
+    webapp_api_url: str
+    tool_id: str                              # e.g. "SubdomainDiscovery"
+    graph_inputs: dict                        # e.g. {"domain": "example.com"}
+    user_inputs: list[str] = []               # user-added values
+    dedup_enabled: bool = True
+    settings_overrides: dict = {}             # optional per-tool settings
+
+
+class PartialReconState(BaseModel):
+    """Current state of a partial recon process"""
+    project_id: str
+    tool_id: str = ""
+    status: PartialReconStatus = PartialReconStatus.IDLE
+    container_id: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
+    stats: Optional[dict] = None

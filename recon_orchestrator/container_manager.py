@@ -18,6 +18,7 @@ from models import (
     GvmState, GvmStatus, GvmLogEvent,
     GithubHuntState, GithubHuntStatus, GithubHuntLogEvent,
     TrufflehogState, TrufflehogStatus, TrufflehogLogEvent,
+    PartialReconState, PartialReconStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,7 @@ class ContainerManager:
         self.github_hunt_image = github_hunt_image
         self.trufflehog_image = trufflehog_image
         self.running_states: dict[str, ReconState] = {}
+        self.partial_recon_states: dict[str, PartialReconState] = {}
         self.gvm_states: dict[str, GvmState] = {}
         self.github_hunt_states: dict[str, GithubHuntState] = {}
         self.trufflehog_states: dict[str, TrufflehogState] = {}
@@ -168,6 +170,11 @@ class ContainerManager:
         current_state = await self.get_status(project_id)
         if current_state.status in (ReconStatus.RUNNING, ReconStatus.PAUSED):
             raise ValueError(f"Recon already active for project {project_id}")
+
+        # Mutual exclusion: block if partial recon is running
+        partial_state = await self.get_partial_recon_status(project_id)
+        if partial_state.status in (PartialReconStatus.RUNNING, PartialReconStatus.STARTING):
+            raise ValueError(f"Partial recon is running for project {project_id}. Stop it first.")
 
         # Clean up any existing container
         container_name = self._get_container_name(project_id)
@@ -545,6 +552,11 @@ class ContainerManager:
                 await self.stop_recon(project_id, timeout=5)
             except Exception as e:
                 logger.error(f"Error cleaning up recon {project_id}: {e}")
+        for project_id in list(self.partial_recon_states.keys()):
+            try:
+                await self.stop_partial_recon(project_id, timeout=5)
+            except Exception as e:
+                logger.error(f"Error cleaning up partial recon {project_id}: {e}")
         for project_id in list(self.gvm_states.keys()):
             try:
                 await self.stop_gvm_scan(project_id, timeout=5)
@@ -560,6 +572,276 @@ class ContainerManager:
                 await self.stop_trufflehog(project_id, timeout=5)
             except Exception as e:
                 logger.error(f"Error cleaning up TruffleHog {project_id}: {e}")
+
+    # =========================================================================
+    # Partial Recon Container Lifecycle
+    # =========================================================================
+
+    def _get_partial_container_name(self, project_id: str) -> str:
+        """Generate container name for a partial recon"""
+        safe_id = re.sub(r'[^a-zA-Z0-9_.-]', '_', project_id)
+        return f"redamon-partial-recon-{safe_id}"
+
+    async def get_partial_recon_status(self, project_id: str) -> PartialReconState:
+        """Get current status of a partial recon process"""
+        if project_id in self.partial_recon_states:
+            state = self.partial_recon_states[project_id]
+
+            if state.container_id:
+                try:
+                    container = self.client.containers.get(state.container_id)
+                    if container.status != "running":
+                        exit_code = container.attrs.get("State", {}).get("ExitCode", -1)
+                        if exit_code == 0:
+                            state.status = PartialReconStatus.COMPLETED
+                            state.completed_at = datetime.now(timezone.utc)
+                        else:
+                            state.status = PartialReconStatus.ERROR
+                            state.error = f"Container exited with code {exit_code}"
+                            state.completed_at = datetime.now(timezone.utc)
+                        try:
+                            container.remove()
+                            logger.info(f"Auto-removed partial recon container for {project_id}")
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-remove partial container: {e}")
+                except NotFound:
+                    if state.status not in (PartialReconStatus.COMPLETED, PartialReconStatus.ERROR):
+                        state.status = PartialReconStatus.ERROR
+                        state.error = "Container not found"
+                except APIError as e:
+                    logger.warning(f"Docker API error checking partial recon for {project_id}: {e}")
+
+            return state
+
+        return PartialReconState(
+            project_id=project_id,
+            status=PartialReconStatus.IDLE,
+        )
+
+    async def start_partial_recon(
+        self,
+        project_id: str,
+        tool_id: str,
+        config: dict,
+        recon_path: str,
+    ) -> PartialReconState:
+        """Start a partial recon container for a specific tool.
+
+        Args:
+            project_id: Project identifier
+            tool_id: Tool to run (e.g., "SubdomainDiscovery")
+            config: Full config dict to write as JSON for the container
+            recon_path: Host path to the recon directory
+        """
+        # Check mutual exclusion
+        current_state = await self.get_partial_recon_status(project_id)
+        if current_state.status in (PartialReconStatus.RUNNING, PartialReconStatus.STARTING):
+            raise ValueError(f"Partial recon already active for project {project_id}")
+
+        recon_state = await self.get_status(project_id)
+        if recon_state.status in (ReconStatus.RUNNING, ReconStatus.PAUSED):
+            raise ValueError(f"Full recon is running for project {project_id}. Stop it first.")
+
+        # Clean up old partial container
+        container_name = self._get_partial_container_name(project_id)
+        try:
+            old_container = self.client.containers.get(container_name)
+            old_container.remove(force=True)
+        except NotFound:
+            pass
+
+        state = PartialReconState(
+            project_id=project_id,
+            tool_id=tool_id,
+            status=PartialReconStatus.STARTING,
+            started_at=datetime.now(timezone.utc),
+        )
+        self.partial_recon_states[project_id] = state
+
+        try:
+            # Ensure recon image exists
+            try:
+                self.client.images.get(self.recon_image)
+            except NotFound:
+                logger.info(f"Building recon image from {recon_path}")
+                self.client.images.build(path=recon_path, tag=self.recon_image, rm=True)
+
+            # Write config JSON to /tmp/redamon/ (shared volume)
+            import json
+            config_dir = Path("/tmp/redamon")
+            config_dir.mkdir(parents=True, exist_ok=True)
+            config_path = config_dir / f"partial_{project_id}.json"
+            with open(config_path, "w") as f:
+                json.dump(config, f)
+
+            # Start container with the partial_recon.py entry point
+            container = self.client.containers.run(
+                self.recon_image,
+                name=container_name,
+                detach=True,
+                network_mode="host",
+                privileged=True,
+                environment={
+                    "PROJECT_ID": project_id,
+                    "USER_ID": config.get("user_id", ""),
+                    "WEBAPP_API_URL": config.get("webapp_api_url", ""),
+                    "PARTIAL_RECON_CONFIG": f"/tmp/redamon/partial_{project_id}.json",
+                    "UPDATE_GRAPH_DB": "true",
+                    "HOST_RECON_OUTPUT_PATH": f"{recon_path}/output",
+                    "NEO4J_URI": os.environ.get("NEO4J_URI", "bolt://localhost:7687"),
+                    "NEO4J_USER": os.environ.get("NEO4J_USER", "neo4j"),
+                    "NEO4J_PASSWORD": os.environ.get("NEO4J_PASSWORD", ""),
+                },
+                volumes={
+                    "/var/run/docker.sock": {"bind": "/var/run/docker.sock", "mode": "rw"},
+                    f"{recon_path}": {"bind": "/app/recon", "mode": "rw"},
+                    f"{Path(recon_path).parent}/graph_db": {"bind": "/app/graph_db", "mode": "ro"},
+                    "/tmp/redamon": {"bind": "/tmp/redamon", "mode": "rw"},
+                },
+                command="python /app/recon/partial_recon.py",
+            )
+
+            state.container_id = container.id
+            state.status = PartialReconStatus.RUNNING
+            logger.info(f"Started partial recon container {container.id} for project {project_id}, tool {tool_id}")
+
+        except Exception as e:
+            state.status = PartialReconStatus.ERROR
+            state.error = str(e)
+            logger.error(f"Failed to start partial recon for {project_id}: {e}")
+
+        return state
+
+    async def stop_partial_recon(self, project_id: str, timeout: int = 10) -> PartialReconState:
+        """Stop a running partial recon process"""
+        state = await self.get_partial_recon_status(project_id)
+
+        if state.status not in (PartialReconStatus.RUNNING, PartialReconStatus.STARTING):
+            return state
+
+        state.status = PartialReconStatus.STOPPING
+
+        if state.container_id:
+            try:
+                container = self.client.containers.get(state.container_id)
+                container.stop(timeout=timeout)
+                container.remove()
+                state.status = PartialReconStatus.IDLE
+                state.completed_at = datetime.now(timezone.utc)
+                logger.info(f"Stopped partial recon container for project {project_id}")
+            except NotFound:
+                state.status = PartialReconStatus.IDLE
+            except Exception as e:
+                state.status = PartialReconStatus.ERROR
+                state.error = f"Failed to stop: {e}"
+
+        # Clean up sub-containers spawned by partial recon
+        cleaned = self._cleanup_sub_containers()
+        if cleaned > 0:
+            logger.info(f"Cleaned up {cleaned} sub-container(s) for partial recon {project_id}")
+
+        if project_id in self.partial_recon_states:
+            del self.partial_recon_states[project_id]
+
+        return state
+
+    async def stream_partial_logs(self, project_id: str) -> AsyncGenerator[ReconLogEvent, None]:
+        """Stream logs from a partial recon container.
+        Reuses the same log parsing logic as full recon.
+        """
+        state = await self.get_partial_recon_status(project_id)
+
+        if not state.container_id:
+            yield ReconLogEvent(
+                log="No partial recon container found for this project",
+                timestamp=datetime.now(timezone.utc),
+                level="error",
+            )
+            return
+
+        current_phase: Optional[str] = "Partial Recon"
+        current_phase_num: Optional[int] = 1
+
+        try:
+            container = self.client.containers.get(state.container_id)
+
+            log_queue: asyncio.Queue[Optional[bytes]] = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+
+            def read_logs():
+                try:
+                    for line in container.logs(stream=True, follow=True, timestamps=True):
+                        asyncio.run_coroutine_threadsafe(
+                            log_queue.put(line), loop
+                        ).result(timeout=5)
+                        try:
+                            container.reload()
+                            if container.status not in ("running", "paused"):
+                                break
+                        except Exception:
+                            break
+                except Exception as e:
+                    logger.error(f"Error in partial recon log reader: {e}")
+                finally:
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            log_queue.put(None), loop
+                        ).result(timeout=5)
+                    except Exception:
+                        pass
+
+            loop.run_in_executor(None, read_logs)
+
+            while True:
+                try:
+                    line = await asyncio.wait_for(log_queue.get(), timeout=1.0)
+                    if line is None:
+                        break
+
+                    decoded_line = line.decode("utf-8", errors="replace").rstrip()
+                    if decoded_line:
+                        # Parse Docker timestamp
+                        docker_ts = None
+                        log_text = decoded_line
+                        if len(decoded_line) > 30 and decoded_line[4] == '-' and decoded_line[10] == 'T':
+                            space_idx = decoded_line.find(' ')
+                            if space_idx > 0:
+                                ts_str = decoded_line[:space_idx]
+                                try:
+                                    ts_clean = ts_str.replace('Z', '+00:00')
+                                    dot_idx = ts_clean.find('.')
+                                    plus_idx = ts_clean.find('+', dot_idx) if dot_idx > 0 else -1
+                                    if dot_idx > 0 and plus_idx > 0:
+                                        frac = ts_clean[dot_idx + 1:plus_idx][:6]
+                                        ts_clean = ts_clean[:dot_idx + 1] + frac + ts_clean[plus_idx:]
+                                    docker_ts = datetime.fromisoformat(ts_clean)
+                                    log_text = decoded_line[space_idx + 1:]
+                                except (ValueError, OverflowError):
+                                    pass
+
+                        event = self._parse_log_line(log_text, current_phase, current_phase_num, timestamp=docker_ts)
+                        yield event
+
+                except asyncio.TimeoutError:
+                    try:
+                        container.reload()
+                        if container.status not in ("running", "paused"):
+                            break
+                    except Exception:
+                        break
+
+        except (NotFound, APIError):
+            yield ReconLogEvent(
+                log="Partial recon container stopped",
+                timestamp=datetime.now(timezone.utc),
+                level="info",
+            )
+        except Exception as e:
+            yield ReconLogEvent(
+                log=f"Error streaming partial recon logs: {e}",
+                timestamp=datetime.now(timezone.utc),
+                level="error",
+            )
 
     # =========================================================================
     # GVM Vulnerability Scan Container Lifecycle

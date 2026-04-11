@@ -45,7 +45,8 @@ NVD_DAYS ?= $(call _kb_yaml_get,ingestion.nvd_lookback_days,90)
 #
 # In docker mode, everything runs via `docker exec` so none of this applies.
 
-VENV_DIR := .redamon-venv
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+VENV_DIR := $(MAKEFILE_DIR).redamon-venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
 VENV_PIP := $(VENV_DIR)/bin/pip
 VENV_MARKER := $(VENV_DIR)/.installed
@@ -59,7 +60,7 @@ else
     PYTHON := $(VIRTUAL_ENV)/bin/python
     _NEEDS_BOOTSTRAP := no
     _ACTIVE_VENV_INFO := active: $(VIRTUAL_ENV)
-  else ifneq ($(wildcard $(VENV_PYTHON)),)
+  else ifneq ($(shell test -x "$(VENV_PYTHON)" && echo yes),)
     # Previously bootstrapped .redamon-venv exists on disk — use it
     PYTHON := $(VENV_PYTHON)
     _NEEDS_BOOTSTRAP := no
@@ -82,13 +83,13 @@ ifeq ($(MODE),docker)
     --nvd-days $(NVD_DAYS)
   PY_RUN = docker exec $(AGENT_CONTAINER) python
 else
-  KB_CMD = $(PYTHON) -m knowledge_base.curation.data_ingestion \
+  KB_CMD = "$(PYTHON)" -m knowledge_base.curation.data_ingestion \
     --neo4j-uri $(NEO4J_URI) \
     --neo4j-user $(NEO4J_USER) \
     --neo4j-password $(NEO4J_PASSWORD) \
     --model $(MODEL) \
     --nvd-days $(NVD_DAYS)
-  PY_RUN = $(PYTHON)
+  PY_RUN = "$(PYTHON)"
 endif
 
 # =============================================================================
@@ -122,15 +123,15 @@ ifeq ($(_NEEDS_BOOTSTRAP),yes)
 		echo "=========================================================="; \
 		echo ""; \
 		if [ ! -d "$(VENV_DIR)" ]; then \
-			python3 -m venv $(VENV_DIR) || { \
+			python3 -m venv "$(VENV_DIR)" || { \
 				echo "ERROR: Failed to create venv at $(VENV_DIR)"; \
 				echo "Make sure python3 + python3-venv are installed."; \
 				exit 1; \
 			}; \
 		fi; \
-		$(VENV_PIP) install --quiet --upgrade pip; \
-		$(VENV_PIP) install -r ../agentic/requirements.txt; \
-		touch $(VENV_MARKER); \
+		"$(VENV_PIP)" install --quiet --upgrade pip; \
+		"$(VENV_PIP)" install -r ../agentic/requirements.txt; \
+		touch "$(VENV_MARKER)"; \
 		echo ""; \
 		echo "✓ Bootstrap complete. Using $(VENV_PYTHON)"; \
 		echo ""; \
@@ -260,11 +261,11 @@ kb-clean: ## Remove Python caches (__pycache__ + .pytest_cache). Leaves $(VENV_D
 	@echo "Cleaned Python caches (__pycache__ and .pytest_cache)"
 
 kb-venv-clean: ## Remove the auto-bootstrapped $(VENV_DIR) only
-	@if [ -n "$$VIRTUAL_ENV" ] && [ "$$VIRTUAL_ENV" = "$$(pwd)/$(VENV_DIR)" ]; then \
+	@if [ -n "$$VIRTUAL_ENV" ] && [ "$$VIRTUAL_ENV" = "$(VENV_DIR)" ]; then \
 		echo "WARNING: $(VENV_DIR) is currently activated in your shell."; \
 		echo "Run 'deactivate' manually after this command completes."; \
 	fi
-	@rm -rf $(VENV_DIR)
+	@rm -rf "$(VENV_DIR)"
 	@echo "Removed $(VENV_DIR)"
 
 kb-clean-full: kb-clean kb-venv-clean ## Remove Python caches AND $(VENV_DIR) (everything kb-clean + kb-venv-clean do)

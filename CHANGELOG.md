@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.9.0] - 2026-04-11
+
+### Added
+
+- **Workflow data node count badges** -- each data node in the Workflow View (Subdomain, Port, BaseURL, etc.) now shows a small badge with the total number of graph nodes of that type. Clicking the badge opens an overlay listing all node names. Uses the graph page's React Query cache for zero extra API calls
+
+---
+
 ## [3.8.0] - 2026-04-10
 
 ### Added

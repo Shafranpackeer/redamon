@@ -119,3 +119,42 @@ export const TRUFFLEHOG_PHASES = [
 ] as const
 
 export type TrufflehogPhase = typeof TRUFFLEHOG_PHASES[number]
+
+// =============================================================================
+// Partial Recon Types
+// =============================================================================
+
+export type PartialReconStatus = 'idle' | 'starting' | 'running' | 'completed' | 'error' | 'stopping'
+
+export interface PartialReconState {
+  project_id: string
+  tool_id: string
+  status: PartialReconStatus
+  container_id: string | null
+  started_at: string | null
+  completed_at: string | null
+  error: string | null
+  stats: Record<string, number> | null
+}
+
+export interface GraphInputs {
+  domain: string | null
+  existing_subdomains_count: number
+  source: 'graph' | 'settings'
+}
+
+export interface PartialReconParams {
+  tool_id: string
+  graph_inputs: Record<string, string>
+  user_inputs: string[]
+  dedup_enabled: boolean
+  settings_overrides?: Record<string, unknown>
+}
+
+export const PARTIAL_RECON_SUPPORTED_TOOLS = new Set(['SubdomainDiscovery'])
+
+export const PARTIAL_RECON_PHASES = [
+  'Subdomain Discovery',
+] as const
+
+export type PartialReconPhase = typeof PARTIAL_RECON_PHASES[number]

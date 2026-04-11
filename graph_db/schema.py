@@ -61,6 +61,8 @@ CONSTRAINTS = [
     "CREATE CONSTRAINT chain_failure_id IF NOT EXISTS FOR (fl:ChainFailure) REQUIRE fl.failure_id IS UNIQUE",
     # Knowledge Base — base constraint (not tenant-scoped, content is universal)
     "CREATE CONSTRAINT kb_chunk_id IF NOT EXISTS FOR (c:KBChunk) REQUIRE c.chunk_id IS UNIQUE",
+    # Partial Recon — user-provided inputs for per-tool partial recon runs
+    "CREATE CONSTRAINT userinput_unique IF NOT EXISTS FOR (ui:UserInput) REQUIRE (ui.id) IS UNIQUE",
 ]
 
 # Tenant composite indexes (one per node type for efficient per-project queries)
@@ -103,6 +105,8 @@ TENANT_INDEXES = [
     "CREATE INDEX idx_chainfinding_tenant IF NOT EXISTS FOR (f:ChainFinding) ON (f.user_id, f.project_id)",
     "CREATE INDEX idx_chaindecision_tenant IF NOT EXISTS FOR (d:ChainDecision) ON (d.user_id, d.project_id)",
     "CREATE INDEX idx_chainfailure_tenant IF NOT EXISTS FOR (fl:ChainFailure) ON (fl.user_id, fl.project_id)",
+    # Partial Recon — UserInput tenant index
+    "CREATE INDEX idx_userinput_tenant IF NOT EXISTS FOR (ui:UserInput) ON (ui.user_id, ui.project_id)",
 ]
 
 # Additional functional indexes

@@ -27,6 +27,9 @@ from models import (
     TrufflehogStartRequest,
     TrufflehogState,
     TrufflehogStatus,
+    PartialReconStartRequest,
+    PartialReconState,
+    PartialReconStatus,
 )
 
 # Configure logging
@@ -440,6 +443,228 @@ async def stream_logs(project_id: str):
         }
 
     return EventSourceResponse(event_generator())
+
+
+# =============================================================================
+# Partial Recon Endpoints
+# =============================================================================
+
+
+@app.post("/recon/{project_id}/partial", response_model=PartialReconState)
+async def start_partial_recon(project_id: str, request: PartialReconStartRequest):
+    """
+    Start a partial recon run for a specific tool.
+
+    Spawns a lightweight recon container that runs only the requested tool
+    (e.g., SubdomainDiscovery) and updates the graph with results.
+    """
+    if not container_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    # RoE time window + hard guardrail checks (same as full recon)
+    if request.webapp_api_url:
+        try:
+            import urllib.request
+            import json as json_mod
+            from datetime import datetime
+            try:
+                import zoneinfo
+            except ImportError:
+                from backports import zoneinfo
+
+            url = f"{request.webapp_api_url.rstrip('/')}/api/projects/{project_id}"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    project = json_mod.loads(resp.read().decode())
+
+                    # Hard guardrail check
+                    domain = request.graph_inputs.get("domain", "")
+                    if domain:
+                        from hard_guardrail import is_hard_blocked
+                        blocked, reason = is_hard_blocked(domain)
+                        if blocked:
+                            raise HTTPException(status_code=403, detail=f"Hard guardrail: {reason}")
+
+                    # RoE time window check
+                    if project.get('roeEnabled') and project.get('roeTimeWindowEnabled'):
+                        tz_name = project.get('roeTimeWindowTimezone', 'UTC')
+                        try:
+                            tz = zoneinfo.ZoneInfo(tz_name)
+                            now_local = datetime.now(tz)
+                            day_name = now_local.strftime('%A').lower()
+                            allowed_days = project.get('roeTimeWindowDays', [])
+                            start_time = project.get('roeTimeWindowStartTime', '09:00')
+                            end_time = project.get('roeTimeWindowEndTime', '18:00')
+                            current_time = now_local.strftime('%H:%M')
+
+                            if day_name not in allowed_days:
+                                raise HTTPException(
+                                    status_code=403,
+                                    detail=f"RoE time window: testing not allowed on {day_name.capitalize()}"
+                                )
+                            if start_time <= end_time:
+                                outside = current_time < start_time or current_time > end_time
+                            else:
+                                outside = current_time < start_time and current_time > end_time
+                            if outside:
+                                raise HTTPException(
+                                    status_code=403,
+                                    detail=f"RoE time window: current time {current_time} {tz_name} outside allowed ({start_time}-{end_time})"
+                                )
+                        except HTTPException:
+                            raise
+                        except Exception as e:
+                            logger.warning(f"RoE check failed (proceeding): {e}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not check RoE (proceeding): {e}")
+
+    # Note: settings are fetched by the recon container itself via get_settings()
+    # (uses PROJECT_ID + WEBAPP_API_URL env vars, same as main.py)
+
+    # Build the config dict for the partial recon container
+    config = {
+        "tool_id": request.tool_id,
+        "domain": request.graph_inputs.get("domain", ""),
+        "user_inputs": request.user_inputs,
+        "dedup_enabled": request.dedup_enabled,
+        "user_id": request.user_id,
+        "webapp_api_url": request.webapp_api_url,
+    }
+
+    try:
+        state = await container_manager.start_partial_recon(
+            project_id=project_id,
+            tool_id=request.tool_id,
+            config=config,
+            recon_path=RECON_PATH,
+        )
+        return state
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error starting partial recon: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/recon/{project_id}/partial/status", response_model=PartialReconState)
+async def get_partial_recon_status(project_id: str):
+    """Get current status of a partial recon process"""
+    if not container_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    return await container_manager.get_partial_recon_status(project_id)
+
+
+@app.post("/recon/{project_id}/partial/stop", response_model=PartialReconState)
+async def stop_partial_recon(project_id: str):
+    """Stop a running partial recon process"""
+    if not container_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    return await container_manager.stop_partial_recon(project_id)
+
+
+@app.get("/recon/{project_id}/partial/logs")
+async def stream_partial_logs(project_id: str):
+    """Stream logs from a partial recon container via SSE"""
+    if not container_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    state = await container_manager.get_partial_recon_status(project_id)
+    if state.status == PartialReconStatus.IDLE:
+        raise HTTPException(status_code=404, detail="No partial recon process found")
+
+    async def event_generator():
+        try:
+            async for event in container_manager.stream_partial_logs(project_id):
+                yield {
+                    "event": "log",
+                    "data": json.dumps({
+                        "log": event.log,
+                        "timestamp": event.timestamp.isoformat(),
+                        "phase": event.phase,
+                        "phaseNumber": event.phase_number,
+                        "isPhaseStart": event.is_phase_start,
+                        "level": event.level,
+                    }),
+                }
+        except Exception as e:
+            logger.error(f"Error streaming partial recon logs: {e}")
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": str(e)}),
+            }
+
+        final_state = await container_manager.get_partial_recon_status(project_id)
+        yield {
+            "event": "complete",
+            "data": json.dumps({
+                "status": final_state.status.value if hasattr(final_state.status, 'value') else final_state.status,
+                "completedAt": final_state.completed_at.isoformat() if final_state.completed_at else None,
+                "error": final_state.error,
+                "stats": final_state.stats,
+            }),
+        }
+
+    return EventSourceResponse(event_generator())
+
+
+@app.get("/recon/{project_id}/graph-inputs/{tool_id}")
+async def get_graph_inputs(project_id: str, tool_id: str, user_id: str = ""):
+    """
+    Get existing graph inputs for a partial recon tool.
+
+    Queries Neo4j for relevant data (e.g., Domain node for SubdomainDiscovery).
+    Note: The neo4j Python driver is not installed in the orchestrator image.
+    This endpoint uses a raw Bolt connection via the neo4j library in graph_db
+    (which is volume-mounted read-only). If that fails, it falls back to
+    project settings from the webapp API.
+    """
+    if not container_manager:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+
+    result = {"domain": None, "existing_subdomains_count": 0, "source": "settings"}
+
+    # Try querying Neo4j directly using the graph_db module (volume-mounted)
+    # This may fail if the neo4j Python package is not installed in the orchestrator
+    try:
+        import sys
+        from pathlib import Path
+        graph_parent = Path("/app")
+        if str(graph_parent) not in sys.path:
+            sys.path.insert(0, str(graph_parent))
+
+        from graph_db import Neo4jClient
+        with Neo4jClient() as client:
+            if client.verify_connection():
+                graph_result = client.get_graph_inputs_for_tool(tool_id, user_id, project_id)
+                if graph_result.get("domain"):
+                    return graph_result
+    except ImportError:
+        logger.info("neo4j package not available in orchestrator, falling back to webapp API")
+    except Exception as e:
+        logger.warning(f"Neo4j query failed for graph-inputs: {e}")
+
+    # Fallback: get domain from project settings via webapp API
+    webapp_url = os.environ.get("WEBAPP_API_URL", "")
+    if not webapp_url:
+        webapp_url = "http://localhost:3000"
+
+    try:
+        import urllib.request
+        import json as json_mod
+        url = f"{webapp_url}/api/projects/{project_id}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                project = json_mod.loads(resp.read().decode())
+                result["domain"] = project.get("targetDomain", "")
+                result["source"] = "settings"
+    except Exception as e:
+        logger.warning(f"Could not fetch project settings for graph-inputs: {e}")
+
+    return result
 
 
 @app.get("/recon/running")

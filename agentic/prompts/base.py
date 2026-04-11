@@ -1320,9 +1320,22 @@ When user asks about "JS findings", "JavaScript attack surface", "JS secrets", o
 - times_seen (integer): total encounters
 - first_seen_at (datetime), updated_at (datetime)
 
+**UserInput** - User-provided values for partial recon runs (custom subdomains, IPs, etc.)
+- id (string, UUID): unique identifier
+- input_type (string): "subdomains", "ips", "urls", "domains"
+- values (string[]): user-provided values
+- tool_id (string): which tool was run (e.g. "SubdomainDiscovery")
+- dedup_enabled (boolean): whether deduplication was enabled
+- status (string): "running", "completed", "error"
+- stats (string): JSON with run statistics
+- created_at (datetime), completed_at (datetime)
+
 ## Relationships
 
 ### Infrastructure Relationships
+- `(d:Domain)-[:HAS_USER_INPUT]->(ui:UserInput)` - Domain has user-provided partial recon input
+- `(ui:UserInput)-[:PRODUCED]->(s:Subdomain)` - Partial recon run produced this subdomain
+- `(ui:UserInput)-[:PRODUCED]->(i:IP)` - Partial recon run produced this IP
 - `(d:Domain)-[:HAS_EXTERNAL_DOMAIN]->(ed:ExternalDomain)` - Domain encountered foreign domain during recon
 - `(s:Subdomain)-[:BELONGS_TO]->(d:Domain)` - Subdomain belongs to Domain
 - `(s:Subdomain)-[:RESOLVES_TO {record_type, first_seen, last_seen}]->(i:IP)` - Subdomain resolves to IP (DNS); OTX passive_dns adds first_seen/last_seen to this relationship

@@ -275,6 +275,7 @@ services:
       - ./trufflehog_scan:/app/trufflehog_scan:ro
       - ./trufflehog_scan/output:/app/trufflehog_scan/output:rw
       - ./mcp/nuclei-templates:/app/nuclei-templates:ro
+      - /tmp/redamon:/tmp/redamon:rw
     environment:
       # Host paths are auto-detected from container mounts (no hardcoded paths needed)
       RECON_IMAGE: redamon-recon:latest

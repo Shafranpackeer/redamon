@@ -2,7 +2,7 @@
 
 import { memo, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { AlertTriangle, Settings } from 'lucide-react'
+import { AlertTriangle, Settings, Play } from 'lucide-react'
 import styles from './WorkflowView.module.css'
 
 interface ToolNodeData {
@@ -17,6 +17,8 @@ interface ToolNodeData {
   groupColor: string
   onToggle?: (field: string, value: boolean) => void
   onOpenSettings?: (toolId: string) => void
+  onRunPartial?: (toolId: string) => void
+  partialReconSupported?: boolean
   onNodeClick?: (nodeId: string) => void
   highlighted?: boolean
   dimmed?: boolean
@@ -34,6 +36,8 @@ function ToolNodeComponent({ data }: NodeProps) {
     groupColor,
     onToggle,
     onOpenSettings,
+    onRunPartial,
+    partialReconSupported,
     onNodeClick,
     highlighted,
     dimmed,
@@ -48,6 +52,11 @@ function ToolNodeComponent({ data }: NodeProps) {
     e.stopPropagation()
     onOpenSettings?.(toolId)
   }, [onOpenSettings, toolId])
+
+  const handlePlayClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onRunPartial?.(toolId)
+  }, [onRunPartial, toolId])
 
   const handleClick = useCallback(() => {
     onNodeClick?.(`tool-${toolId}`)
@@ -91,6 +100,16 @@ function ToolNodeComponent({ data }: NodeProps) {
           </div>
         )}
       </div>
+
+      {partialReconSupported && enabled && (
+        <span
+          className={styles.partialReconPlay}
+          onClick={handlePlayClick}
+          title="Run partial recon"
+        >
+          <Play size={12} fill="currentColor" />
+        </span>
+      )}
 
       <Handle type="source" position={Position.Right} className={styles.handle} />
     </div>
