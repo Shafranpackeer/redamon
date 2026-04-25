@@ -65,11 +65,9 @@ RUN apt-get install -y --fix-missing \
     testssl.sh \
     # Command injection exploitation
     commix \
-    # Java deserialization gadget chains (used by the RCE built-in skill)
-    # Source: https://github.com/frohoff/ysoserial (MIT). Kali ships a
-    # `ysoserial` wrapper that points at /usr/share/ysoserial/ysoserial.jar.
+    # Java runtime for the ysoserial JAR (installed below from upstream releases;
+    # the Kali `ysoserial` apt package is no longer reliably published)
     default-jre-headless \
-    ysoserial \
     # DNS enumeration (zone transfers, SRV, DNSSEC walk)
     dnsrecon \
     # Custom wordlist generation from target websites
@@ -95,6 +93,16 @@ RUN apt-get install -y --fix-missing \
 # Retry helper for transient network failures (git clone, curl, go install, etc.)
 RUN printf '#!/bin/sh\nmax=5; n=0; until "$@"; do n=$((n+1)); [ $n -ge $max ] && exit 1; echo "Retry $n/$max ..."; sleep $((n*5)); done\n' \
     > /usr/local/bin/retry && chmod +x /usr/local/bin/retry
+
+# ysoserial: Java deserialization gadget chains (used by the RCE built-in skill)
+# Source: https://github.com/frohoff/ysoserial (MIT). Downloaded directly from
+# the upstream release because the Kali apt package is no longer reliably published.
+RUN mkdir -p /usr/share/ysoserial \
+    && retry curl -fsSL -o /usr/share/ysoserial/ysoserial.jar \
+       https://github.com/frohoff/ysoserial/releases/download/v0.0.6/ysoserial-all.jar \
+    && printf '#!/bin/sh\nexec java -jar /usr/share/ysoserial/ysoserial.jar "$@"\n' \
+       > /usr/local/bin/ysoserial \
+    && chmod +x /usr/local/bin/ysoserial
 
 # Install Go (required for naabu and nuclei)
 # Handle ARM64 (Apple Silicon) vs AMD64 automatically
