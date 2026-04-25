@@ -23,6 +23,7 @@ or directly:
 import importlib.util
 import io
 import os
+import subprocess
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -1026,6 +1027,83 @@ class TestBuildTargetUrlsEdgeCases(unittest.TestCase):
         urls = self._silent(TH.build_target_urls, {"a.com", "b.com"}, set(), recon_data=recon)
         # Post-refactor: same as cascade would have produced.
         self.assertEqual(sorted(urls), ["https://a.com", "https://b.com"])
+
+
+# ---------------------------------------------------------------------------
+# Integration: run_with_heartbeat helper
+# ---------------------------------------------------------------------------
+
+class TestRunWithHeartbeat(unittest.TestCase):
+    """Verify the shared subprocess helper that wraps blocking crawler calls
+    with a periodic '[*][<label>] still running...' heartbeat."""
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location(
+            "sh_under_test",
+            str(_RECON_DIR / "helpers" / "subprocess_helpers.py"),
+        )
+        cls.SH = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.SH)
+
+    def test_returns_completed_process_with_correct_fields(self):
+        """Drop-in replacement for subprocess.run -- verify return shape."""
+        result = self.SH.run_with_heartbeat(
+            [sys.executable, "-c", "print('hello'); import sys; sys.exit(0)"],
+            label="Test",
+            interval=999,  # never fires
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("hello", result.stdout)
+        self.assertEqual(result.stderr, "")
+
+    def test_nonzero_exit_returncode_propagated(self):
+        result = self.SH.run_with_heartbeat(
+            [sys.executable, "-c", "import sys; sys.exit(7)"],
+            label="Test",
+            interval=999,
+        )
+        self.assertEqual(result.returncode, 7)
+
+    def test_heartbeat_fires_during_long_subprocess(self):
+        """A subprocess that runs for ~3s with heartbeat interval=1 should
+        produce 1-3 heartbeat lines on stdout (timing-dependent).
+
+        We capture parent stdout (the heartbeat thread's print()) and check
+        that the expected pattern appears.
+        """
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            result = self.SH.run_with_heartbeat(
+                [sys.executable, "-c", "import time; time.sleep(2.5)"],
+                label="SlowChild",
+                interval=1,
+            )
+        out = captured.getvalue()
+        self.assertEqual(result.returncode, 0)
+        # At least one heartbeat fired in the 2.5s window with interval=1.
+        self.assertIn("[*][SlowChild] still running...", out)
+
+    def test_no_heartbeat_when_subprocess_finishes_quickly(self):
+        """Quick subprocess (<<interval) -- heartbeat must NOT fire."""
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            self.SH.run_with_heartbeat(
+                [sys.executable, "-c", "pass"],
+                label="QuickChild",
+                interval=10,
+            )
+        self.assertNotIn("still running", captured.getvalue())
+
+    def test_timeout_raises_TimeoutExpired(self):
+        """Match subprocess.run timeout semantics."""
+        with self.assertRaises(subprocess.TimeoutExpired):
+            self.SH.run_with_heartbeat(
+                [sys.executable, "-c", "import time; time.sleep(10)"],
+                label="Hangs",
+                interval=999,
+                timeout=1,
+            )
 
 
 # ---------------------------------------------------------------------------
