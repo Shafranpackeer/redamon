@@ -382,7 +382,7 @@ class Neo4jToolManager:
                 "Please try again or check that the agent model is configured."
             )
 
-        schema = self.graph.get_schema
+        schema = self.graph.get_schema()
 
         # Build the prompt with optional error context for retries
         error_context = ""
