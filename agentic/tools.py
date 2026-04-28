@@ -382,7 +382,7 @@ class Neo4jToolManager:
                 "Please try again or check that the agent model is configured."
             )
 
-        schema = self.graph.get_schema()
+        schema = self.graph.get_schema
 
         # Build the prompt with optional error context for retries
         error_context = ""
@@ -425,30 +425,15 @@ Incorporate the filter pattern into your MATCH clauses so results are scoped app
   Example: MATCH (s:Subdomain)-[:RESOLVES_TO]->(i:IP) WITH s, count(i) AS cnt WHERE cnt >= 4 MATCH (s)-[r:RESOLVES_TO]->(i:IP) RETURN s, r, i LIMIT 300
 - Never use RETURN with property accessors (e.g. n.name). Always RETURN the node/relationship variable itself."""
 
-        prompt = f"""{TEXT_TO_CYPHER_SYSTEM}
-
-## Current Database Schema
-{schema}
-{error_context}{view_scope}
-## Important Rules
-- Generate ONLY the Cypher query, no explanations
-- Do NOT include user_id or project_id filters - they will be added automatically
-- Do NOT use any parameters (like $target, $domain, etc.) - use literal values or no filters
-- If the question doesn't specify a target, query ALL matching data
-- Always use LIMIT to restrict results
-- CRITICAL: Generate a SINGLE Cypher query with ONE RETURN statement at the end
-- For comprehensive requests, use multiple MATCH clauses or OPTIONAL MATCH, then return all data in ONE RETURN
-- NEVER create multiple queries or multiple RETURN statements
-- Example structure for comprehensive queries:
-  MATCH (d:Domain {name: 'example.com'})
-  OPTIONAL MATCH (d)-[:HAS_SUBDOMAIN]->(s:Subdomain)
-  OPTIONAL MATCH (s)-[:RESOLVES_TO]->(i:IP)
-  OPTIONAL MATCH (i)-[:HAS_PORT]->(p:Port)
-  RETURN d, s, i, p LIMIT 100{graph_view_rules}
-
-User Question: {question}
-
-Cypher Query:"""
+        # Use format() instead of f-string to avoid issues with curly braces in user questions
+        prompt = "{system}\n\n## Current Database Schema\n{schema}\n{error_context}{view_scope}\n## Important Rules\n- Generate ONLY the Cypher query, no explanations\n- Do NOT include user_id or project_id filters - they will be added automatically\n- Do NOT use any parameters (like $target, $domain, etc.) - use literal values or no filters\n- If the question doesn't specify a target, query ALL matching data\n- Always use LIMIT to restrict results\n- CRITICAL: Generate a SINGLE Cypher query with ONE RETURN statement at the end\n- For comprehensive requests, use multiple MATCH clauses or OPTIONAL MATCH, then return all data in ONE RETURN\n- NEVER create multiple queries or multiple RETURN statements\n- Example structure for comprehensive queries:\n  MATCH (d:Domain {{name: 'example.com'}})\n  OPTIONAL MATCH (d)-[:HAS_SUBDOMAIN]->(s:Subdomain)\n  OPTIONAL MATCH (s)-[:RESOLVES_TO]->(i:IP)\n  OPTIONAL MATCH (i)-[:HAS_PORT]->(p:Port)\n  RETURN d, s, i, p LIMIT 100{graph_view_rules}\n\nUser Question: {question}\n\nCypher Query:".format(
+            system=TEXT_TO_CYPHER_SYSTEM,
+            schema=schema,
+            error_context=error_context,
+            view_scope=view_scope,
+            graph_view_rules=graph_view_rules,
+            question=question
+        )
 
         response = await self.llm.ainvoke(prompt)
         from orchestrator_helpers.json_utils import normalize_content
